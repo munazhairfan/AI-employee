@@ -1,0 +1,32 @@
+services:
+  odoo:
+    image: odoo:19
+    container_name: odoo_community
+    ports:
+      - "8069:8069"
+    depends_on:
+      - db
+    environment:
+      - HOST=db
+      - PORT=5432
+      - USER=odoo
+      - PASSWORD=odoo
+    volumes:
+      - odoo_data:/var/lib/odoo
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    container_name: odoo_postgres
+    environment:
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  odoo_data:
+    driver: local
+  postgres_data:
+    driver: local

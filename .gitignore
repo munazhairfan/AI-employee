@@ -1,0 +1,175 @@
+# ============================================================
+# AI Employee Vault - Git Ignore File
+# ============================================================
+
+# ============================================================
+# 🔴 CRITICAL: DO NOT POST TO GITHUB - CONTAINS SECRETS
+# ============================================================
+
+# Email & API Credentials (contains passwords)
+.env
+.env.local
+.env.*.local
+*.secret
+
+# Google OAuth Credentials (contains client secrets)
+credentials.json
+token.json
+
+# SSL/TLS Keys (contains private keys)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ============================================================
+# 🔴 CRITICAL: DO NOT POST TO GITHUB - BROWSER SESSIONS
+# ============================================================
+
+# WhatsApp Session (contains login cookies - anyone can access your WhatsApp)
+whatsapp_session/
+
+# Browser Cache & Storage (may contain session data)
+**/Default/
+**/Session Storage/
+**/Local Storage/
+**/IndexedDB/
+**/Cache/
+**/Code Cache/
+**/GPUCache/
+**/Service Worker/
+
+# ============================================================
+# 🔴 CRITICAL: DO NOT POST TO GITHUB - BUSINESS DATA
+# ============================================================
+
+# Working Vault (contains invoices, emails, business documents)
+AI_Employee_Vault/
+AI_Employee_Vault/Drop/
+AI_Employee_Vault/Needs_Action/
+AI_Employee_Vault/Plans/
+AI_Employee_Vault/Pending_Approval/
+AI_Employee_Vault/Done/
+AI_Employee_Vault/Briefings/
+AI_Employee_Vault/Dashboard.md
+
+# Logs (may contain sensitive business information)
+Logs/
+*.log
+ralph_*.log
+test_results_*.json
+
+# ============================================================
+# 🔴 CRITICAL: DO NOT POST TO GITHUB - DATABASE FILES
+# ============================================================
+
+# Database Files (contains business data)
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+odoo_data/
+odoo_config/
+*.ldb
+*.leveldb
+
+# ============================================================
+# 🟡 STANDARD: DO NOT POST - DEPENDENCIES & BUILD
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ============================================================
+# 🟡 STANDARD: DO NOT POST - IDE & EDITOR
+# ============================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Other Editors
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================
+# 🟡 STANDARD: DO NOT POST - TESTING
+# ============================================================
+
+# Test Coverage
+coverage/
+*.cover
+*.py,cover
+.pytest_cache/
+.eslintcache
+.nyc_output/
+
+# ============================================================
+# 🟡 STANDARD: DO NOT POST - TEMPORARY FILES
+# ============================================================
+
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+*.old
+
+# ============================================================
+# ✅ SAFE TO POST TO GITHUB
+# ============================================================
+# The following ARE included in git (not ignored):
+#
+# - src/              (your source code)
+# - watchers/         (watcher scripts)
+# - skills/           (skill definitions)
+# - tests/            (test files)
+# - docs/             (documentation)
+# - .gitignore        (this file)
+# - .env.example      (template without secrets)
+# - SECURITY.md       (security guide)
+# - README.md         (project readme)
+# - Architecture.md   (system design)
+# - docker-compose.yml (docker config)
+# - package.json      (node dependencies list)
+# - requirements.txt  (python dependencies list)
+# ============================================================
