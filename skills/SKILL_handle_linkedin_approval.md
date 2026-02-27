@@ -3,18 +3,32 @@ type: agent_skill
 ---
 
 ## Description:
-Check for user approval on LinkedIn draft and handle actions safely.
+Check LinkedIn draft approval status and prepare for manual posting (draft-only, no execution).
 
 ## Prompt:
-Use Claude Code filesystem tools only. Set vault_path to 'AI_Employee_Vault'. List all .md files in /Pending_Approval folder that have 'linkedin_draft' in type frontmatter. For each file, read the content. Check the checkboxes under ## Approval Actions.
+Use filesystem tools only. Set vault_path to 'AI_Employee_Vault'. List all .md files in /Pending_Approval folder with type 'linkedin_draft' or 'linkedin_post_draft' in frontmatter. For each file, read the content and check the Approval Actions checkboxes.
 
-If the line '- [x] Approve and Post' is present (case-sensitive, with x inside []), then:
-- Extract the post text from ## Post Text section.
-- Append to Dashboard.md under a new section ## Recent Updates with timestamp and 'LinkedIn draft approved - ready for manual post. Text copied to clipboard.'.
-- Move the .md file to /Done folder and add note at end 'Approved - user to paste and click Post manually.'.
+If '- [ ] Approve' is marked (user adds [x]):
+- Extract the post text from ## Post Text section
+- Copy post text to clipboard using pyperclip
+- Update file status to 'approved_ready_for_manual_post'
+- Move file to /Done folder
+- Append note: "Approved at {timestamp} - Post text copied to clipboard. User to paste and post manually on LinkedIn."
+- Output: "LinkedIn draft approved. Post text copied to clipboard. Please paste on LinkedIn and post manually."
 
-If '- [x] Reject' is present, move the .md file to /Done folder and add note at end 'Rejected - reason: [extract any text below Reject checkbox]'.
+If '- [ ] Reject' is marked:
+- Extract rejection reason (text below Reject checkbox)
+- Move file to /Done folder
+- Append note: "Rejected at {timestamp} - Reason: {extracted reason}"
+- Output: "LinkedIn draft rejected: {reason}"
 
-If no checkboxes marked or only Edit, do nothing.
+If '- [ ] Edit' is marked or no checkboxes marked:
+- Leave file in /Pending_Approval
+- Output: "Draft pending edit/review. No action taken."
 
-Do not open browsers or post to LinkedIn in this skill. Do not use external tools.
+**CONSTRAINTS:**
+- Do NOT open browsers
+- Do NOT post to LinkedIn
+- Do NOT use external APIs
+- Only filesystem and clipboard operations allowed
+- No additions, no hallucinations

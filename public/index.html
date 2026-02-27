@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect LinkedIn</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #1a1a2e;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .btn-linkedin {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 16px 24px;
+            background: #0077b5;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.3s, transform 0.2s;
+        }
+        .btn-linkedin:hover {
+            background: #006097;
+            transform: translateY(-2px);
+        }
+        .btn-linkedin svg {
+            width: 24px;
+            height: 24px;
+        }
+        .users-list {
+            margin-top: 40px;
+            border-top: 1px solid #eee;
+            padding-top: 30px;
+        }
+        .users-list h2 {
+            color: #1a1a2e;
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+        .user-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .user-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #0077b5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-name {
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+        .user-email {
+            font-size: 14px;
+            color: #666;
+        }
+        .user-urn {
+            font-size: 12px;
+            color: #999;
+            font-family: monospace;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-expired {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+        .features {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .features h3 {
+            font-size: 16px;
+            color: #1a1a2e;
+            margin-bottom: 15px;
+        }
+        .features ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .features li {
+            padding: 8px 0;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .features li::before {
+            content: '✓';
+            color: #28a745;
+            font-weight: bold;
+        }
+        .refresh-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .refresh-btn:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Connect LinkedIn</h1>
+        <p class="subtitle">Connect your LinkedIn account to enable automated posting from AI Employee Vault</p>
+
+        <a href="/auth/linkedin" class="btn-linkedin">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+            </svg>
+            Connect with LinkedIn
+        </a>
+
+        <div class="features">
+            <h3>✨ Features</h3>
+            <ul>
+                <li>Secure OAuth 2.0 authentication</li>
+                <li>Automatic token refresh</li>
+                <li>Dynamic URN fetching (no hardcoded values)</li>
+                <li>Multi-user support</li>
+                <li>Token stored securely (not in .env)</li>
+            </ul>
+        </div>
+
+        <div class="users-list">
+            <h2>Connected Users</h2>
+            <button class="refresh-btn" onclick="loadUsers()">↻ Refresh</button>
+            <div id="usersList"></div>
+        </div>
+    </div>
+
+    <script>
+        async function loadUsers() {
+            try {
+                const res = await fetch('/users');
+                const data = await res.json();
+                
+                const container = document.getElementById('usersList');
+                
+                if (data.users.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p>No users connected yet</p>
+                            <p style="font-size: 14px; margin-top: 10px;">Click "Connect with LinkedIn" to add a user</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.users.map(user => {
+                    const isExpired = new Date(user.token_expires_at) < new Date();
+                    const initials = user.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                    
+                    return `
+                        <div class="user-card">
+                            <div class="user-avatar">${initials}</div>
+                            <div class="user-info">
+                                <div class="user-name">${escapeHtml(user.name)}</div>
+                                <div class="user-email">${escapeHtml(user.email)}</div>
+                                <div class="user-urn">${user.urn}</div>
+                            </div>
+                            <span class="status-badge ${isExpired ? 'status-expired' : 'status-active'}">
+                                ${isExpired ? 'Expired' : 'Active'}
+                            </span>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                console.error('Failed to load users:', error);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Load users on page load
+        loadUsers();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadUsers, 30000);
+    </script>
+</body>
+</html>
