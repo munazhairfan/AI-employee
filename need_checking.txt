@@ -1,0 +1,4 @@
+if browser is opening user should be informed that the task is being performed
+if number not found user should know
+if the request doesn't have enough details why is it even allowed to execute
+sending message by number not by name

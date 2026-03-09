@@ -44,14 +44,14 @@ class GmailWatcher(BaseWatcher):
 
     def _load_processed_ids(self):
         """Load already processed email IDs from cache file."""
-        cache_file = self.vault_path / '.processed_emails.txt'
+        cache_file = Path('data/AI_Employee_Vault/.processed_emails.txt')
         if cache_file.exists():
             with open(cache_file, 'r') as f:
                 self._processed_ids = set(line.strip() for line in f if line.strip())
 
     def _save_processed_id(self, msg_id: str):
         """Save processed email ID to cache file."""
-        cache_file = self.vault_path / '.processed_emails.txt'
+        cache_file = Path('data/AI_Employee_Vault/.processed_emails.txt')
         with open(cache_file, 'a') as f:
             f.write(f"{msg_id}\n")
         self._processed_ids.add(msg_id)
@@ -84,6 +84,51 @@ class GmailWatcher(BaseWatcher):
             if header['name'].lower() == name.lower():
                 return header['value']
         return ''
+    
+    def _clean_email_body(self, body: str) -> str:
+        """Remove tracking links but keep meaningful content."""
+        if not body:
+            return ''
+        
+        # Remove LinkedIn tracking URLs but keep job info
+        lines = body.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            original_line = line
+            
+            # Clean tracking parameters from URLs but keep the text
+            if 'linkedin.com' in line:
+                # Keep job titles, company names, locations
+                if any(x in line.lower() for x in ['view job', 'apply with', 'remote', 'designer', 'developer', 'engineer']):
+                    # Extract just the job info before the URL
+                    if 'View job:' in line:
+                        line = line.split('View job:')[0].strip()
+                    elif 'Apply with' in line:
+                        # Keep the job title and company
+                        line = line.split('https://')[0].strip()
+                # Remove pure tracking links
+                elif 'trackingId=' in line or 'trk=' in line or 'lipi=' in line:
+                    continue
+                elif 'linkedin.com/comm' in line:
+                    continue
+            
+            # Remove footer section
+            if any(x in line.lower() for x in [
+                '© 20', 'linkedin corporation', 'privacy policy', 'terms of service',
+                'unsubscribe', 'manage your', 'edit alert'
+            ]):
+                break
+            
+            # Remove very long URLs (likely tracking)
+            if len(line) > 300 and 'http' in line:
+                continue
+            
+            # Keep meaningful content
+            if line.strip():
+                cleaned_lines.append(line.strip())
+        
+        return '\n'.join(cleaned_lines)
 
     def check_for_updates(self) -> list:
         """Get unread important messages that haven't been processed."""
@@ -135,9 +180,9 @@ class GmailWatcher(BaseWatcher):
                 else:
                     priority_level = 'normal'
 
-                # Check importance (filter by subject keywords or sender)
-                important_keywords = ['urgent', 'action required', 'important', 'asap', 'invoice', 'payment']
-                is_important = any(kw.lower() in subject.lower() for kw in important_keywords) or priority_level == 'high'
+                # Process ALL emails (AI will decide importance)
+                # Removed keyword filtering - let AI decide what's important
+                is_important = True
 
                 if is_important:
                     # Parse date
@@ -161,7 +206,7 @@ class GmailWatcher(BaseWatcher):
         return unread_msgs
 
     def create_action_file(self, item: dict) -> Path:
-        """Create EMAIL_{id}.md file in Needs_Action folder."""
+        """Create EMAIL_{id}.md file in watchers/output/ folder for AI processing."""
         # Fetch full message with body
         try:
             msg = self.service.users().messages().get(
@@ -173,29 +218,29 @@ class GmailWatcher(BaseWatcher):
         except Exception as e:
             self.logger.error(f"Error fetching email body: {e}")
             body = self._decode_snippet(item.get('snippet', ''))
-
-        # Create action file
-        action_file = self.needs_action / f"EMAIL_{item['id']}.md"
+        
+        # Clean up the body - remove LinkedIn tracking, footers, etc.
+        cleaned_body = self._clean_email_body(body)
+        
+        # Save to watchers/output/ for AI processor
+        output_dir = Path('data/watcher_output')
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.fromisoformat(item['received']).strftime('%Y-%m-%d_%H-%M-%S')
+        action_file = output_dir / f"gmail_{timestamp}_{item['id']}.md"
         
         content = f"""---
 type: email
+source: gmail
 from: {item['from']}
 subject: {item['subject']}
 received: {item['received']}
 priority: {item['priority']}
-status: pending
 ---
 
-## Email Content
+# Message Content
 
-{body if body else item.get('snippet', 'No content available')}
-
-## Suggested Actions
-
-- [ ] Read and respond to email
-- [ ] Archive or delete after processing
-- [ ] Add to calendar if event-related
-- [ ] Forward to relevant team member if needed
+{cleaned_body if cleaned_body else item.get('snippet', 'No content available')}
 
 """
 

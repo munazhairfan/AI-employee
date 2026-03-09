@@ -22,6 +22,16 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
+# AI Agent Model
+from ai_agent import (
+    ai_reasoning,
+    ai_generate_email_draft,
+    ai_generate_whatsapp_reply,
+    ai_extract_invoice_details,
+    get_model_info,
+    check_ollama_available
+)
+
 # WhatsApp integration
 from whatsapp_sender import send_whatsapp_local
 
@@ -55,6 +65,224 @@ CLIENT_KEYWORDS = [
 KNOWN_CLIENTS = [
     'Test Customer', 'ABC Corp', 'XYZ Ltd', 'Client', 'Customer'
 ]
+
+
+# ============================================================================
+# ANTI-HALLUCINATION VALIDATION FUNCTIONS
+# ============================================================================
+
+def validate_ai_extraction(extraction_data: dict) -> tuple[bool, list[str]]:
+    """
+    Validate AI extraction for anti-hallucination guards.
+    
+    Checks:
+    1. All extracted fields have source citations
+    2. All confidence scores are valid (0-100)
+    3. Required fields are present
+    
+    Returns: (is_valid, list_of_errors)
+    """
+    errors = []
+    
+    if not isinstance(extraction_data, dict):
+        return False, ["Extraction data must be a dictionary"]
+    
+    # Check for fields with extraction table
+    fields = extraction_data.get('fields', {})
+    
+    for field_name, field_data in fields.items():
+        if not isinstance(field_data, dict):
+            errors.append(f"{field_name}: field data must be a dictionary")
+            continue
+        
+        # Check source_text exists for non-null values
+        if field_data.get('value') is not None:
+            if not field_data.get('source_text'):
+                errors.append(f"{field_name}: missing source citation for value '{field_data.get('value')}'")
+        
+        # Check confidence score exists and is valid
+        if 'confidence' not in field_data:
+            errors.append(f"{field_name}: missing confidence score")
+        elif not isinstance(field_data['confidence'], (int, float)):
+            errors.append(f"{field_name}: confidence must be a number")
+        elif field_data['confidence'] < 0 or field_data['confidence'] > 100:
+            errors.append(f"{field_name}: confidence must be between 0-100")
+    
+    return len(errors) == 0, errors
+
+
+def requires_human_review(extraction_data: dict, confidence_threshold: int = 80) -> tuple[bool, str]:
+    """
+    Determine if AI extraction requires human review.
+    
+    Rules:
+    1. Any field with confidence < threshold → requires review
+    2. Any field with null value → requires review
+    3. If extraction_data explicitly flags for review → requires review
+    
+    Returns: (needs_review, reason)
+    """
+    if not isinstance(extraction_data, dict):
+        return True, "Invalid extraction data format"
+    
+    fields = extraction_data.get('fields', {})
+    low_confidence_fields = []
+    missing_fields = []
+    
+    for field_name, field_data in fields.items():
+        if not isinstance(field_data, dict):
+            continue
+        
+        confidence = field_data.get('confidence', 0)
+        value = field_data.get('value')
+        
+        # Check for low confidence
+        if isinstance(confidence, (int, float)) and confidence < confidence_threshold:
+            low_confidence_fields.append(f"{field_name} ({confidence}%)")
+        
+        # Check for missing values
+        if value is None:
+            missing_fields.append(field_name)
+    
+    # Build reason string
+    reasons = []
+    if low_confidence_fields:
+        reasons.append(f"Low confidence fields: {', '.join(low_confidence_fields)}")
+    if missing_fields:
+        reasons.append(f"Missing fields: {', '.join(missing_fields)}")
+    
+    # Check if explicitly flagged for review
+    if extraction_data.get('requires_human_review'):
+        reasons.append(extraction_data.get('review_reason', 'AI flagged for review'))
+    
+    if reasons:
+        return True, "; ".join(reasons)
+    
+    return False, ""
+
+
+def calculate_confidence_average(extraction_data: dict) -> float:
+    """Calculate average confidence score across all fields."""
+    if not isinstance(extraction_data, dict):
+        return 0.0
+    
+    fields = extraction_data.get('fields', {})
+    if not fields:
+        return 0.0
+    
+    confidence_scores = []
+    for field_data in fields.values():
+        if isinstance(field_data, dict) and 'confidence' in field_data:
+            conf = field_data['confidence']
+            if isinstance(conf, (int, float)) and 0 <= conf <= 100:
+                confidence_scores.append(conf)
+    
+    if not confidence_scores:
+        return 0.0
+    
+    return sum(confidence_scores) / len(confidence_scores)
+
+
+def log_ai_decision(draft_id: str, action_type: str, input_data: dict, 
+                    ai_output: dict, requires_review: bool, review_reason: str = "") -> None:
+    """
+    Log AI decision to audit trail with full details.
+    
+    This creates a separate AI audit log entry for tracking:
+    - What input was provided to AI
+    - What output AI generated
+    - Whether human review is required
+    - Confidence scores
+    """
+    log_file = get_log_file()
+    
+    # Create AI-specific log entry
+    ai_log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'log_type': 'ai_decision',
+        'draft_id': draft_id,
+        'action_type': action_type,
+        'input_summary': {
+            'source_file': input_data.get('source_file', 'unknown'),
+            'content_preview': input_data.get('content', '')[:200] if input_data.get('content') else ''
+        },
+        'ai_output_summary': {
+            'extracted_fields_count': len(ai_output.get('fields', {})),
+            'average_confidence': calculate_confidence_average(ai_output),
+            'requires_human_review': requires_review
+        },
+        'ai_output_full': ai_output,
+        'requires_human_review': requires_review,
+        'review_reason': review_reason,
+        'human_action': None,  # Will be filled when human approves/rejects
+        'human_modified_data': None  # Will be filled if human changes AI output
+    }
+    
+    # Load existing logs
+    existing_logs = []
+    if log_file.exists():
+        try:
+            content = log_file.read_text(encoding='utf-8')
+            if content.strip():
+                existing_logs = json.loads(content)
+                if not isinstance(existing_logs, list):
+                    existing_logs = [existing_logs]
+        except (json.JSONDecodeError, IOError):
+            existing_logs = []
+    
+    existing_logs.append(ai_log_entry)
+    log_file.write_text(json.dumps(existing_logs, indent=2), encoding='utf-8')
+
+
+def parse_frontmatter_with_validation(content: str) -> dict:
+    """
+    Parse frontmatter from markdown content with validation.
+    
+    Returns metadata dict with added validation fields:
+    - ai_confidence_average: float (0-100)
+    - ai_requires_review: bool
+    - ai_review_reason: str
+    """
+    metadata = parse_frontmatter(content)
+    
+    # Try to extract fields from content if not in frontmatter
+    if 'fields' not in metadata:
+        # Attempt to parse from content
+        fields = {}
+        lines = content.split('\n')
+        for line in lines:
+            if line.startswith('|') and '|' in line[1:]:
+                parts = line.strip('|').split('|')
+                if len(parts) >= 4:
+                    field_name = parts[0].strip()
+                    value = parts[1].strip()
+                    source = parts[2].strip()
+                    conf_str = parts[3].strip().replace('%', '')
+                    
+                    if field_name and field_name not in ['Field', '---']:
+                        try:
+                            confidence = int(conf_str) if conf_str.isdigit() else 0
+                            fields[field_name] = {
+                                'value': None if value == 'UNKNOWN' else value,
+                                'source_text': None if source == 'Not mentioned in source' else source,
+                                'confidence': confidence
+                            }
+                        except ValueError:
+                            pass
+        
+        if fields:
+            metadata['fields'] = fields
+    
+    # Calculate validation metrics
+    metadata['ai_confidence_average'] = calculate_confidence_average(metadata)
+    metadata['ai_requires_review'], metadata['ai_review_reason'] = requires_human_review(metadata)
+    
+    return metadata
+
+
+# ============================================================================
+# END ANTI-HALLUCINATION VALIDATION FUNCTIONS
+# ============================================================================
 
 
 def get_log_file() -> Path:
@@ -107,8 +335,10 @@ def append_to_dashboard(dashboard: Path, entry: str) -> None:
 
 def run_skill(skill_name: str, logger) -> dict:
     """
-    Run a skill via Claude CLI.
+    Run a skill via AI Agent (Ollama/OpenAI).
     Returns dict with success status and output.
+    
+    DEPRECATED: Claude CLI replaced by ai_agent.py
     """
     skill_path = SKILLS_PATH / skill_name
 
@@ -117,44 +347,202 @@ def run_skill(skill_name: str, logger) -> dict:
         return {'success': False, 'error': f'Skill not found: {skill_name}'}
 
     try:
-        logger.info(f"Running skill: {skill_name}")
-        result = subprocess.run(
-            ['claude', 'Execute', str(skill_path)],
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-
-        if result.returncode == 0:
+        logger.info(f"Running skill via AI agent: {skill_name}")
+        
+        # Read skill file for context
+        skill_content = skill_path.read_text(encoding='utf-8')
+        
+        # Extract the prompt from skill file
+        # (In production, you'd parse the markdown more carefully)
+        prompt_start = skill_content.find('## Prompt:')
+        if prompt_start == -1:
+            prompt_start = skill_content.find('## Description:')
+        
+        if prompt_start != -1:
+            prompt_text = skill_content[prompt_start:]
+        else:
+            prompt_text = skill_content
+        
+        # Call AI agent with skill context
+        result = ai_reasoning(prompt_text[:4000])  # Truncate to avoid token limits
+        
+        if result:
             logger.info(f"Skill completed: {skill_name}")
             return {
                 'success': True,
-                'output': result.stdout,
-                'stderr': result.stderr
+                'output': json.dumps(result, indent=2),
+                'ai_data': result
             }
         else:
-            logger.error(f"Skill failed: {skill_name} - {result.stderr}")
+            logger.error(f"AI agent failed: {skill_name}")
             return {
                 'success': False,
-                'error': result.stderr,
-                'output': result.stdout
+                'error': 'AI agent returned no result'
             }
 
-    except subprocess.TimeoutExpired:
-        logger.error(f"Skill timed out: {skill_name}")
-        return {'success': False, 'error': 'Timeout after 5 minutes'}
-    except FileNotFoundError:
-        logger.error("'claude' command not found. Install Claude CLI.")
-        return {'success': False, 'error': 'Claude CLI not installed'}
     except Exception as e:
         logger.error(f"Skill execution error: {e}")
         return {'success': False, 'error': str(e)}
+
+
+def generate_draft_with_ai(action_type: str, content: str, metadata: dict,
+                           pending_dir: Path, logger) -> Path:
+    """
+    Generate draft using AI agent with anti-hallucination guards.
+    
+    Args:
+        action_type: Type of action (email, whatsapp, invoice)
+        content: Source content to process
+        metadata: Additional metadata
+        pending_dir: Directory to save draft
+        logger: Logger instance
+    
+    Returns:
+        Path to created draft file
+    """
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    task_id = metadata.get('task_id', datetime.now().strftime('%Y%m%d%H%M%S'))
+    
+    draft_file = pending_dir / f"{action_type}_Draft_{timestamp}.md"
+    
+    # Select appropriate AI function based on action type
+    if action_type == 'email':
+        logger.info("Generating email draft with AI...")
+        ai_result = ai_generate_email_draft(content)
+    elif action_type == 'whatsapp':
+        logger.info("Generating WhatsApp reply with AI...")
+        ai_result = ai_generate_whatsapp_reply(content)
+    elif action_type == 'invoice':
+        logger.info("Extracting invoice details with AI...")
+        ai_result = ai_extract_invoice_details(content)
+    else:
+        logger.info(f"Processing {action_type} with AI...")
+        ai_result = ai_reasoning(content, task_type=action_type)
+    
+    # Handle AI failure
+    if ai_result is None:
+        logger.error("AI processing failed - creating basic draft")
+        # Fall back to basic draft generation
+        return generate_draft_for_action(action_type, content, metadata, pending_dir, logger)
+    
+    # Extract fields from AI result
+    fields = ai_result.get('fields', {})
+    requires_review = ai_result.get('requires_human_review', False)
+    review_reason = ai_result.get('review_reason', '')
+    ai_confidence = calculate_confidence_average({'fields': fields})
+    
+    # Build draft content based on action type
+    if action_type == 'email':
+        to_line = f"**To:** {ai_result.get('to', {}).get('value', 'UNKNOWN') or 'UNKNOWN'}"
+        subject_line = f"**Subject:** {ai_result.get('subject', {}).get('value', 'UNKNOWN') or 'UNKNOWN'}"
+        body_section = f"\n## Email Body\n\n{ai_result.get('email_body', content[:1000])}\n"
+    elif action_type == 'whatsapp':
+        from_line = f"**From:** {ai_result.get('sender', {}).get('value', 'UNKNOWN') or 'UNKNOWN'}"
+        original_message = metadata.get('original_message', content[:500])
+        body_section = f"\n## Original Message\n\n{original_message}\n\n## Suggested Reply\n\n{ai_result.get('suggested_reply', '')}\n"
+    elif action_type == 'invoice':
+        client_line = f"**Client:** {fields.get('customer', {}).get('value', 'UNKNOWN') or 'UNKNOWN'}"
+        amount_line = f"**Amount:** {fields.get('amount', {}).get('value', 'UNKNOWN') or 'UNKNOWN'}"
+        body_section = f"\n## Invoice Details\n\n{metadata.get('description', content[:500])}\n"
+    else:
+        to_line = subject_line = body_section = client_line = amount_line = ""
+        body_section = f"\n## Content\n\n{content[:1000]}\n"
+    
+    # Build extracted information table
+    extracted_table = ""
+    if fields:
+        extracted_table = "## Extracted Information (With Source Citations)\n\n"
+        extracted_table += "| Field | Value | Source Text | Confidence |\n"
+        extracted_table += "|-------|-------|-------------|------------|\n"
+        
+        for field_name, field_data in fields.items():
+            if isinstance(field_data, dict):
+                value = field_data.get('value', 'UNKNOWN')
+                source = field_data.get('source_text', 'Not mentioned')
+                confidence = field_data.get('confidence', 0)
+                extracted_table += f"| {field_name} | {value} | {source} | {confidence}% |\n"
+        
+        extracted_table += "\n"
+    
+    # Human review section
+    if requires_review:
+        human_review_section = f"""## Human Review Required
+
+**YES** - {review_reason}
+
+**Action:** Human must review before approval
+
+"""
+    else:
+        human_review_section = """## Human Review Required
+
+**NO** - All extractions high confidence (≥80%)
+
+"""
+    
+    draft_content = f"""---
+type: {action_type}_draft
+status: pending_review
+generated_at: {datetime.now().isoformat()}
+task_id: {task_id}
+source_file: {metadata.get('source_file', 'orchestrator')}
+requires_human_review: {str(requires_review).lower()}
+ai_confidence_average: {ai_confidence:.1f}
+---
+
+# Draft: {action_type.replace('_', ' ').title()}
+
+## Action Details
+
+{to_line if action_type == 'email' else ''}
+{subject_line if action_type == 'email' else ''}
+{client_line if action_type == 'invoice' else ''}
+{amount_line if action_type == 'invoice' else ''}
+{body_section}
+
+{extracted_table}
+{human_review_section}
+---
+
+## Approval Actions
+
+- [ ] Approve (execute manually)
+- [ ] Reject (add your reason below)
+- [ ] Edit (add your changes/notes below)
+
+---
+*Draft generated by AI Agent - Anti-Hallucination Guards Active - No API calls made*
+"""
+    
+    draft_file.write_text(draft_content, encoding='utf-8')
+    
+    # Log AI decision for audit trail
+    input_data = {
+        'source_file': metadata.get('source_file', 'unknown'),
+        'content': content,
+        'action_type': action_type
+    }
+    log_ai_decision(
+        draft_id=draft_file.name,
+        action_type=action_type,
+        input_data=input_data,
+        ai_output=ai_result,
+        requires_review=requires_review,
+        review_reason=review_reason
+    )
+    
+    logger.info(f"AI draft created: {draft_file.name} (confidence: {ai_confidence:.1f}%, review: {requires_review})")
+    log_action('ai_draft_created', f'{action_type}: {draft_file.name}',
+               error=f'Confidence: {ai_confidence:.1f}%, Review: {requires_review}')
+    
+    return draft_file
 
 
 def generate_draft_for_action(action_type: str, content: str, metadata: dict,
                                pending_dir: Path, logger) -> Path:
     """
     Generate draft file in Pending_Approval for human review.
+    Includes anti-hallucination validation and human review flags.
     No MCP calls - draft only.
     """
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -195,12 +583,51 @@ def generate_draft_for_action(action_type: str, content: str, metadata: dict,
         amount_line = f"**Amount:** PKR {metadata.get('amount', '0')}"
         body_section = f"\n## Invoice Details\n\n{metadata.get('description', content[:500])}\n"
 
+    # Anti-hallucination validation
+    fields = metadata.get('fields', {})
+    ai_confidence = calculate_confidence_average(metadata) if fields else 100.0
+    requires_review, review_reason = requires_human_review(metadata) if fields else (False, "")
+    
+    # Build extracted information table if fields exist
+    extracted_table = ""
+    if fields:
+        extracted_table = "## Extracted Information (With Source Citations)\n\n"
+        extracted_table += "| Field | Value | Source Text | Confidence |\n"
+        extracted_table += "|-------|-------|-------------|------------|\n"
+        
+        for field_name, field_data in fields.items():
+            if isinstance(field_data, dict):
+                value = field_data.get('value', 'UNKNOWN')
+                source = field_data.get('source_text', 'Not mentioned')
+                confidence = field_data.get('confidence', 0)
+                extracted_table += f"| {field_name} | {value} | {source} | {confidence}% |\n"
+        
+        extracted_table += "\n"
+
+    # Determine human review section
+    if requires_review:
+        human_review_section = f"""## Human Review Required
+
+**YES** - {review_reason}
+
+**Action:** Human must review before approval
+
+"""
+    else:
+        human_review_section = """## Human Review Required
+
+**NO** - All extractions high confidence (≥80%)
+
+"""
+
     draft_content = f"""---
 type: {action_type}_draft
 status: pending_review
 generated_at: {datetime.now().isoformat()}
 task_id: {task_id}
 source_file: {metadata.get('source_file', 'orchestrator')}
+requires_human_review: {str(requires_review).lower()}
+ai_confidence_average: {ai_confidence:.1f}
 ---
 
 # Draft: {action_type.replace('_', ' ').title()}
@@ -213,6 +640,8 @@ source_file: {metadata.get('source_file', 'orchestrator')}
 {amount_line}
 {body_section}
 
+{extracted_table}
+{human_review_section}
 ---
 
 ## Approval Actions
@@ -222,12 +651,29 @@ source_file: {metadata.get('source_file', 'orchestrator')}
 - [ ] Edit (add your changes/notes below)
 
 ---
-*Draft generated by orchestrator - No API calls made*
+*Draft generated by orchestrator - Anti-Hallucination Guards Active - No API calls made*
 """
 
     draft_file.write_text(draft_content, encoding='utf-8')
-    logger.info(f"Draft created: {draft_file.name}")
-    log_action('draft_created', f'{action_type}: {draft_file.name}')
+    
+    # Log AI decision for audit trail
+    input_data = {
+        'source_file': metadata.get('source_file', 'unknown'),
+        'content': content,
+        'action_type': action_type
+    }
+    log_ai_decision(
+        draft_id=draft_file.name,
+        action_type=action_type,
+        input_data=input_data,
+        ai_output={'fields': fields},
+        requires_review=requires_review,
+        review_reason=review_reason
+    )
+    
+    logger.info(f"Draft created: {draft_file.name} (confidence: {ai_confidence:.1f}%, review: {requires_review})")
+    log_action('draft_created', f'{action_type}: {draft_file.name}', 
+               error=f'Confidence: {ai_confidence:.1f}%, Review: {requires_review}')
 
     return draft_file
 

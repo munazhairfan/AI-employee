@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Employee Vault - Login</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .auth-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        .toggle-form {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .toggle-form a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .toggle-form a:hover {
+            text-decoration: underline;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .oauth-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+        }
+        
+        .oauth-section h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        .oauth-button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            color: #333;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: background 0.3s;
+        }
+        
+        .oauth-button:hover {
+            background: #f5f5f5;
+        }
+        
+        .oauth-button.connected {
+            background: #efe;
+            border-color: #3c3;
+            color: #3c3;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h1>AI Employee Vault</h1>
+        <p class="subtitle">Sign in to manage your tasks</p>
+        
+        <div class="error" id="error-message"></div>
+        <div class="success" id="success-message"></div>
+        
+        <!-- Login Form -->
+        <form id="login-form">
+            <div class="form-group">
+                <label for="login-email">Email</label>
+                <input type="email" id="login-email" required placeholder="your@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" required placeholder="••••••••">
+            </div>
+            
+            <button type="submit">Sign In</button>
+        </form>
+        
+        <!-- Signup Form -->
+        <form id="signup-form" class="hidden">
+            <div class="form-group">
+                <label for="signup-name">Name</label>
+                <input type="text" id="signup-name" placeholder="Your Name">
+            </div>
+            
+            <div class="form-group">
+                <label for="signup-email">Email</label>
+                <input type="email" id="signup-email" required placeholder="your@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="signup-password">Password</label>
+                <input type="password" id="signup-password" required placeholder="At least 6 characters">
+            </div>
+            
+            <button type="submit">Create Account</button>
+        </form>
+        
+        <div class="toggle-form">
+            <span id="toggle-text">Don't have an account?</span>
+            <a onclick="toggleForms()" id="toggle-link">Sign up</a>
+        </div>
+        
+        <!-- OAuth Section (shown after login) -->
+        <div class="oauth-section hidden" id="oauth-section">
+            <h3>Connect Your Accounts</h3>
+            
+            <button class="oauth-button" id="gmail-connect" onclick="connectGmail()">
+                🔗 Connect Gmail
+            </button>
+            
+            <button class="oauth-button" id="odoo-connect" onclick="connectOdoo()">
+                🔗 Connect Odoo
+            </button>
+            
+            <button onclick="goToDashboard()" style="margin-top: 20px; background: #667eea;">
+                Go to Dashboard →
+            </button>
+        </div>
+    </div>
+    
+    <script>
+        let currentUser = null;
+        
+        function toggleForms() {
+            const loginForm = document.getElementById('login-form');
+            const signupForm = document.getElementById('signup-form');
+            const toggleText = document.getElementById('toggle-text');
+            const toggleLink = document.getElementById('toggle-link');
+            
+            if (loginForm.classList.contains('hidden')) {
+                loginForm.classList.remove('hidden');
+                signupForm.classList.add('hidden');
+                toggleText.textContent = "Don't have an account?";
+                toggleLink.textContent = "Sign up";
+            } else {
+                loginForm.classList.add('hidden');
+                signupForm.classList.remove('hidden');
+                toggleText.textContent = "Already have an account?";
+                toggleLink.textContent = "Sign in";
+            }
+        }
+        
+        // Login
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const result = await res.json();
+                
+                if (result.success) {
+                    currentUser = result;
+                    localStorage.setItem('session_token', result.session_token);
+                    showSuccess('Login successful!');
+                    showOAuthSection();
+                } else {
+                    showError(result.error || 'Login failed');
+                }
+            } catch (err) {
+                showError('Login error: ' + err.message);
+            }
+        });
+        
+        // Signup
+        document.getElementById('signup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('signup-name').value;
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            
+            try {
+                const res = await fetch('/api/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password })
+                });
+                
+                const result = await res.json();
+                
+                if (result.success) {
+                    showSuccess('Account created! Please sign in.');
+                    toggleForms();
+                } else {
+                    showError(result.error || 'Signup failed');
+                }
+            } catch (err) {
+                showError('Signup error: ' + err.message);
+            }
+        });
+        
+        function showSuccess(msg) {
+            const el = document.getElementById('success-message');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 3000);
+        }
+        
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            el.textContent = msg;
+            el.style.display = 'block';
+        }
+        
+        function showOAuthSection() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('toggle-form').classList.add('hidden');
+            document.getElementById('oauth-section').classList.remove('hidden');
+        }
+        
+        function goToDashboard() {
+            window.location.href = '/dashboard.html';
+        }
+        
+        function connectGmail() {
+            alert('Gmail OAuth integration - would redirect to Google OAuth in production');
+            // In production: window.location.href = '/api/oauth/gmail/start';
+        }
+        
+        function connectOdoo() {
+            alert('Odoo OAuth integration - would redirect to Odoo OAuth in production');
+            // In production: window.location.href = '/api/oauth/odoo/start';
+        }
+        
+        // Check if already logged in
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('session_token');
+            if (token) {
+                // Verify session
+                fetch('/api/auth/verify', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.valid) {
+                        currentUser = result;
+                        showOAuthSection();
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
