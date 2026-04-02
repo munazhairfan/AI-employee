@@ -526,17 +526,51 @@ def get_to_review_item_content(task_id):
                 'received': metadata.get('received', 'Unknown'),
                 'subject': metadata.get('what', 'Item to review'),
                 'summary': metadata.get('ai_summary', 'Review this item'),
-                'content': content_text
+                'expires': metadata.get('expires', 'N/A'),
+                'content': content_text,
+                'full_content': content  # Add full content including frontmatter
             }
     
     return {'error': 'Task not found'}
 
 def get_pending_item_content(task_id):
+    """Get full content and metadata for a pending task"""
     for folder in [NEEDS_ACTION, PENDING_APPROVAL]:
         task_file = folder / f'{task_id}.md'
         if task_file.exists():
             content = task_file.read_text(encoding='utf-8')
-            return {'id': task_id, 'content': content}
+            
+            # Extract metadata
+            metadata = {}
+            lines = content.split('\n')
+            in_frontmatter = False
+            
+            for line in lines:
+                if line.strip() == '---':
+                    if not in_frontmatter:
+                        in_frontmatter = True
+                        continue
+                    else:
+                        break
+                
+                if in_frontmatter and ':' in line:
+                    key, value = line.split(':', 1)
+                    metadata[key.strip()] = value.strip()
+            
+            # Extract intent and missing info
+            intent = extract_intent(content)
+            missing_info = extract_missing_info(content)
+            
+            return {
+                'id': task_id,
+                'type': metadata.get('type', 'unknown'),
+                'created': metadata.get('created', ''),
+                'confidence': metadata.get('ai_confidence', '0'),
+                'intent': intent,
+                'missing_info': missing_info,
+                'full_content': content
+            }
+    
     return {'error': 'Not found'}
 
 def get_recent_activity():
@@ -1513,25 +1547,30 @@ def create_dashboard_html():
         async function rejectTask(taskId) {
             const reason = prompt('Reason for rejection (optional):');
             if (reason === null) return;
-            
+
             try {
                 const res = await fetch(`${API}/api/reject`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ task_id: taskId, reason: reason || 'No reason provided' })
                 });
-                
+
                 const result = await res.json();
-                
+
                 if (result.success) {
-                    loadPendingTasks();
+                    // Remove the task from UI immediately
+                    document.getElementById('task-' + taskId)?.remove();
                     loadStatus();
-                    alert('Task rejected');
+                    showToast('Task rejected', 'info');
                 } else {
-                    alert('Error: ' + result.error);
+                    // Only show error if it's not "not found" (task already moved)
+                    if (result.error && !result.error.includes('not found')) {
+                        showToast('Error: ' + result.error, 'error');
+                    }
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                // Ignore errors after rejection (task already moved)
+                console.log('Task already processed');
             }
         }
         

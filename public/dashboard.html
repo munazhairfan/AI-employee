@@ -643,6 +643,122 @@
             margin-bottom: 10px;
         }
 
+        /* MODAL for task details */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            max-width: 700px;
+            max-height: 80vh;
+            width: 90%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.15s;
+        }
+
+        .modal-close:hover {
+            background: var(--surface2);
+            color: var(--text);
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-section {
+            margin-bottom: 20px;
+        }
+
+        .modal-section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .modal-message-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .modal-meta-row {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .meta-item {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .meta-item strong {
+            color: var(--text);
+            opacity: 0.8;
+        }
+
+        .modal-actions {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 10px;
+            background: var(--surface);
+        }
+
         /* REVIEW TASKS */
         .review-item {
             padding: 14px 16px;
@@ -933,6 +1049,23 @@
 
 </main>
 
+<!-- Task Details Modal -->
+<div class="modal-overlay" id="task-modal" onclick="closeTaskModal(event)">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title" id="modal-title">Task Details</div>
+            <button class="modal-close" onclick="closeTaskModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <div class="loading-row skeleton"></div>
+        </div>
+        <div class="modal-actions" id="modal-actions">
+            <button class="btn btn-success" onclick="approveTaskFromModal()">✓ Approve</button>
+            <button class="btn btn-danger" onclick="rejectTaskFromModal()">✕ Reject</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toasts"></div>
 
 <script>
@@ -1025,14 +1158,14 @@ async function loadPendingTasks() {
 }
 
 function renderTaskItem(t, compact) {
-    return `<div class="task-item" id="task-${t.id}">
+    return `<div class="task-item" id="task-${t.id}" style="cursor:pointer" onclick="viewTaskDetails('${t.id}')">
         <div class="task-meta">
             <span class="task-type">${t.type || 'unknown'}</span>
             <span class="task-conf">confidence ${t.confidence || 0}%</span>
         </div>
         ${t.intent ? `<div class="task-intent">→ ${t.intent}</div>` : ''}
         <div class="task-preview">${t.preview || 'No preview'}</div>
-        <div class="task-actions">
+        <div class="task-actions" onclick="event.stopPropagation()">
             <button class="btn btn-success btn-sm" onclick="approveTask('${t.id}')">✓ Approve</button>
             <button class="btn btn-danger btn-sm" onclick="rejectTask('${t.id}')">✕ Reject</button>
         </div>
@@ -1051,13 +1184,13 @@ async function loadReviewTasks() {
         }
         
         el.innerHTML = tasks.map(t => `
-            <div class="review-item">
+            <div class="review-item" style="cursor:pointer" onclick="viewReviewDetails('${t.id}')">
                 <div class="review-meta">
                     <span class="review-from">${t.from || 'Unknown'}</span>
                     <span class="review-expires">expires ${t.expires || 'N/A'}</span>
                 </div>
                 <div class="review-summary">${t.summary || t.subject || 'Item to review'}</div>
-                <div class="task-actions">
+                <div class="task-actions" onclick="event.stopPropagation()">
                     <button class="btn btn-success btn-sm" onclick="markDone('${t.id}')">✓ Done</button>
                     <button class="btn btn-ghost btn-sm" onclick="archiveReview('${t.id}')">Archive</button>
                 </div>
@@ -1235,6 +1368,215 @@ async function processDropFolder() {
 function fillExample(text) {
     document.getElementById('task-input').value = text;
     document.getElementById('task-input').focus();
+}
+
+// ─── TASK DETAILS MODAL ───────────────────────────────────────
+
+let currentTaskId = null;
+
+async function viewTaskDetails(taskId) {
+    currentTaskId = taskId;
+    
+    // Show modal with loading state
+    const modal = document.getElementById('task-modal');
+    const title = document.getElementById('modal-title');
+    const body = document.getElementById('modal-body');
+    
+    modal.classList.add('active');
+    title.textContent = 'Loading task details...';
+    body.innerHTML = '<div class="loading-row skeleton"></div><div class="loading-row skeleton" style="height:50px; opacity:0.6"></div>';
+    
+    try {
+        // Fetch full task content
+        const res = await fetch(`${API}/api/pending/${taskId}`);
+        const task = await res.json();
+        
+        if (task.error) {
+            body.innerHTML = `<div class="empty"><div class="empty-text">Error loading task: ${task.error}</div></div>`;
+            return;
+        }
+        
+        // Update modal title
+        title.textContent = `${task.type || 'Task'} - Details`;
+        
+        // Build modal content
+        let content = '';
+        
+        // Meta information
+        content += '<div class="modal-section">';
+        content += '<div class="modal-section-title">Task Information</div>';
+        content += '<div class="modal-meta-row">';
+        content += `<div class="meta-item"><strong>Type:</strong> ${task.type || 'unknown'}</div>`;
+        content += `<div class="meta-item"><strong>Confidence:</strong> ${task.confidence || 0}%</div>`;
+        content += `<div class="meta-item"><strong>Created:</strong> ${task.created ? new Date(task.created).toLocaleString() : 'Unknown'}</div>`;
+        content += '</div></div>';
+        
+        // Intent / Action
+        if (task.intent) {
+            content += '<div class="modal-section">';
+            content += '<div class="modal-section-title">Suggested Action</div>';
+            content += `<div class="modal-message-box" style="border-left:3px solid var(--accent);">${task.intent}</div>`;
+            content += '</div>';
+        }
+        
+        // Missing information
+        if (task.missing_info && task.missing_info.length > 0) {
+            content += '<div class="modal-section">';
+            content += '<div class="modal-section-title">⚠️ Missing Information</div>';
+            content += '<div class="modal-message-box" style="border-left:3px solid var(--warn);">';
+            task.missing_info.forEach(info => {
+                content += `<div style="margin-bottom:6px">• ${info}</div>`;
+            });
+            content += '</div></div>';
+        }
+        
+        // Original message
+        if (task.full_content) {
+            // Extract original message section
+            const origMatch = task.full_content.match(/## Original Message([\s\S]*?)(?=---|$)/);
+            if (origMatch) {
+                content += '<div class="modal-section">';
+                content += '<div class="modal-section-title">Original Message</div>';
+                content += '<div class="modal-message-box">';
+                content += origMatch[1].trim();
+                content += '</div></div>';
+            }
+        }
+        
+        // Show full content button
+        content += '<div class="modal-section">';
+        content += '<div class="modal-section-title">Full Task File</div>';
+        content += `<button class="btn btn-ghost btn-sm" onclick="showFullContent('${taskId}')">📄 View Complete File</button>`;
+        content += '</div>';
+        
+        body.innerHTML = content;
+        
+    } catch(e) {
+        console.error('Error loading task details:', e);
+        body.innerHTML = `<div class="empty"><div class="empty-text">Error loading task details</div></div>`;
+    }
+}
+
+function showFullContent(taskId) {
+    // Open task file content in a new view
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="loading-row skeleton"></div>';
+    
+    fetch(`${API}/api/pending/${taskId}`)
+        .then(res => res.json())
+        .then(task => {
+            body.innerHTML = `<div class="modal-section">
+                <div class="modal-section-title">Full Task File</div>
+                <div class="modal-message-box" style="white-space:pre-wrap;font-family:monospace;font-size:11px;">${task.full_content || 'No content'}</div>
+            </div>`;
+        })
+        .catch(() => {
+            body.innerHTML = '<div class="empty"><div class="empty-text">Error loading content</div></div>';
+        });
+}
+
+async function viewReviewDetails(taskId) {
+    currentTaskId = taskId;
+    
+    // Show modal with loading state
+    const modal = document.getElementById('task-modal');
+    const title = document.getElementById('modal-title');
+    const body = document.getElementById('modal-body');
+    const actions = document.getElementById('modal-actions');
+    
+    modal.classList.add('active');
+    title.textContent = 'Loading review details...';
+    body.innerHTML = '<div class="loading-row skeleton"></div><div class="loading-row skeleton" style="height:50px; opacity:0.6"></div>';
+    actions.style.display = 'none';  // Hide action buttons for review items
+    
+    try {
+        // Fetch full review content
+        const res = await fetch(`${API}/api/to-review/${taskId}`);
+        const review = await res.json();
+        
+        if (review.error) {
+            body.innerHTML = `<div class="empty"><div class="empty-text">Error loading review: ${review.error}</div></div>`;
+            return;
+        }
+        
+        // Update modal title
+        title.textContent = `${review.type || 'Review'} - Details`;
+        
+        // Build modal content
+        let content = '';
+        
+        // Meta information
+        content += '<div class="modal-section">';
+        content += '<div class="modal-section-title">Review Information</div>';
+        content += '<div class="modal-meta-row">';
+        content += `<div class="meta-item"><strong>From:</strong> ${review.from || 'Unknown'}</div>`;
+        content += `<div class="meta-item"><strong>Received:</strong> ${review.received ? new Date(review.received).toLocaleString() : 'Unknown'}</div>`;
+        content += `<div class="meta-item"><strong>Expires:</strong> ${review.expires || 'N/A'}</div>`;
+        content += '</div></div>';
+        
+        // Subject/Summary
+        if (review.subject || review.summary) {
+            content += '<div class="modal-section">';
+            content += '<div class="modal-section-title">Summary</div>';
+            content += `<div class="modal-message-box" style="border-left:3px solid var(--accent);">${review.subject || review.summary}</div>`;
+            content += '</div>';
+        }
+        
+        // Full content
+        if (review.full_content) {
+            content += '<div class="modal-section">';
+            content += '<div class="modal-section-title">Full Content</div>';
+            content += '<div class="modal-message-box" style="white-space:pre-wrap;font-family:monospace;font-size:11px;">';
+            content += review.full_content;
+            content += '</div></div>';
+        }
+        
+        body.innerHTML = content;
+        
+    } catch(e) {
+        console.error('Error loading review details:', e);
+        body.innerHTML = `<div class="empty"><div class="empty-text">Error loading review details</div></div>`;
+    }
+}
+
+function closeTaskModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    
+    const modal = document.getElementById('task-modal');
+    const actions = document.getElementById('modal-actions');
+    modal.classList.remove('active');
+    actions.style.display = 'flex';  // Show action buttons for next modal
+    currentTaskId = null;
+}
+
+async function approveTaskFromModal() {
+    if (!currentTaskId) return;
+    await approveTask(currentTaskId);
+    closeTaskModal();
+}
+
+async function rejectTaskFromModal() {
+    if (!currentTaskId) return;
+    const reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return;
+    
+    try {
+        const res = await fetch(`${API}/api/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: currentTaskId, reason: reason || 'No reason' })
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            closeTaskModal();
+            toast('Task rejected', 'info');
+            loadPendingTasks();
+            loadStatus();
+        } else {
+            toast(result.error || 'Failed', 'error');
+        }
+    } catch(e) { toast('Connection error', 'error'); }
 }
 
 // ─── TOAST ────────────────────────────────────────────────────

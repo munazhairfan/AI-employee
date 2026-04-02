@@ -63,6 +63,23 @@ Analyze this business message and determine what action is needed.
 MESSAGE:
 {text}
 
+⚠️ STRICT FILTER — READ FIRST:
+Before classifying, ask: "Did someone EXPLICITLY request a specific action?"
+
+AUTOMATICALLY classify as general_task (informational) if the message is ANY of:
+- A one or two word reply (Ok, Thanks, Noted, G, Sure, Lol, Done)
+- A greeting or religious phrase (Jazakallah, Walaikum Assalam, Assalamu Alaikum, Ameen)
+- A photo, video, voice note, sticker (message contains "Photo", "Video", "0:xx", "Sticker")
+- A forwarded YouTube link, news article, or promotional content
+- An OTP or verification code
+- A message where NO specific action is explicitly requested
+- Any message from a group chat about general discussion
+
+ONLY classify as actionable if ALL of these are true:
+1. Someone is EXPLICITLY asking for something to be done
+2. You have enough information to actually do it
+3. It matches one of: invoice creation, email sending, LinkedIn post, explicit WhatsApp reply request
+
 TASK:
 1. Determine the PRIMARY action needed (choose from these):
    - whatsapp_reply (reply to WhatsApp message) - ✅ CAN AUTO
@@ -213,6 +230,38 @@ Output: {{
     "confidence": 40,
     "suggested_action": "Send email about meeting (missing recipient email address)",
     "priority": "high"
+}}
+
+EXAMPLE 4 (WhatsApp reply with contact name):
+Input: "Reply to WhatsApp from \"Sar Dard\" with: Will get back to you shortly"
+Output: {{
+    "primary_intent": "whatsapp_reply",
+    "entities": {{
+        "customer_name": "Sar Dard",
+        "message_content": "Will get back to you shortly"
+    }},
+    "missing_info": [],
+    "confidence": 95,
+    "suggested_action": "Send WhatsApp message to Sar Dard",
+    "category": "actionable",
+    "can_auto_execute": true,
+    "priority": "normal"
+}}
+
+EXAMPLE 5 (WhatsApp reply with phone number):
+Input: "Reply to WhatsApp from +923001234567: Thanks for the message"
+Output: {{
+    "primary_intent": "whatsapp_reply",
+    "entities": {{
+        "customer_phone": "+923001234567",
+        "message_content": "Thanks for the message"
+    }},
+    "missing_info": [],
+    "confidence": 95,
+    "suggested_action": "Send WhatsApp message to +923001234567",
+    "category": "actionable",
+    "can_auto_execute": true,
+    "priority": "normal"
 }}
 
 NOW ANALYZE THIS:

@@ -61,10 +61,23 @@ def get_new_files():
 
 def create_task_from_file(watcher_file):
     """Read watcher output, AI analyzes, creates task in correct folder"""
-    print(f"\n[AI] Processing: {watcher_file.name}")
     
+    # Check if file still exists
+    if not watcher_file.exists():
+        print(f"\n[AI] File no longer exists (already processed or deleted): {watcher_file.name}")
+        return False
+    
+    print(f"\n[AI] Processing: {watcher_file.name}")
+
     # Read watcher output
-    content = watcher_file.read_text(encoding='utf-8')
+    try:
+        content = watcher_file.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        print(f"\n[AI] File disappeared: {watcher_file.name} (race condition)")
+        return False
+    except Exception as e:
+        print(f"\n[AI] Error reading file: {e}")
+        return False
     
     # Extract metadata from frontmatter
     metadata = {}
@@ -87,6 +100,16 @@ def create_task_from_file(watcher_file):
     message_start = content.find('---', content.find('---') + 3) + 3
     message_content = content[message_start:].strip()
 
+    # Extract original message for context (if available)
+    original_message = ""
+    if "## Original Message" in content:
+        # Extract everything under "## Original Message" section
+        orig_start = content.find("## Original Message")
+        orig_end = content.find("---", orig_start)
+        if orig_end == -1:
+            orig_end = len(content)
+        original_message = content[orig_start:orig_end].strip()
+
     # AI analyzes the message
     print(f"[AI] Analyzing message...")
 
@@ -101,16 +124,18 @@ def create_task_from_file(watcher_file):
 
 **Source:** WhatsApp
 **From:** {from_chat}
+**Phone:** {metadata.get('phone', 'Not available')}
 
-**Message Content:**
-{message_content}
+**Original Message:**
+{original_message if original_message else message_content}
 
 **INSTRUCTIONS FOR AI:**
 1. This is a whatsapp_reply intent - the user needs to reply to this message
-2. Extract the phone number from the sender name if it looks like a phone number (e.g., +923322907397)
-3. The message_content entity should contain the suggested reply message
-4. Format the suggested_action with an arrow: → Send '[message]' to [phone] on WhatsApp
-5. Include confidence score and all extracted entities (phone, message content)"""
+2. Extract the phone number from the metadata if available (phone: {metadata.get('phone', 'NOT_EXTRACTED')})
+3. If phone is 'NOT_EXTRACTED' or 'Not available', mark it as missing info for human to fill
+4. The message_content entity should contain the suggested reply message
+5. Format the suggested_action with an arrow: → Send '[message]' to [phone] on WhatsApp
+6. Include confidence score and all extracted entities (phone, message content)"""
 
     # Try AI analysis with retries for rate limit
     max_retries = 3
@@ -232,9 +257,25 @@ requires_human_review: true
                 task_content += f"- [ ] {item}\n"
             task_content += "\n**Human review required to fill in missing details**\n"
         
+        # Check if phone is missing and add prominent warning
+        entities = ai_result.get('entities', {})
+        phone_value = entities.get('customer_phone') or entities.get('phone')
+        if not phone_value or phone_value in ['NOT_EXTRACTED', 'Unknown', '']:
+            task_content += "\n## ⚠️ PHONE NUMBER REQUIRED\n\n"
+            task_content += "**The phone number could not be extracted automatically.**\n\n"
+            task_content += "**Before approving, you MUST:**\n"
+            task_content += "1. Find the contact's phone number\n"
+            task_content += "2. Add it to the task (edit this file)\n"
+            task_content += "3. OR enter it manually when the approval prompts you\n\n"
+            task_content += "---\n\n"
+        
         # Add original message
         task_content += f"""
 ## Original Message
+
+**From:** {metadata.get('from', 'Unknown')}
+**Phone:** {metadata.get('phone', 'Not available')}
+**Received:** {metadata.get('received', 'Unknown')}
 
 ```
 {message_content}

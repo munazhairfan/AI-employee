@@ -26,21 +26,78 @@ class GmailWatcher(BaseWatcher):
         self._load_processed_ids()
 
     def _authenticate(self):
-        """Authenticate and build Gmail service."""
+        """Authenticate and build Gmail service. Auto-runs OAuth if needed."""
         creds = None
         token_path = Path('token.json')
-        
+
+        # Try to load existing token
         if token_path.exists():
             creds = Credentials.from_authorized_user_file(str(token_path), ['https://www.googleapis.com/auth/gmail.readonly'])
-        
+
+        # If no valid creds, try to auto-run OAuth setup
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                raise Exception("No valid credentials. Run OAuth flow first to create token.json")
-        
+                # Auto-run OAuth setup if credentials.json exists
+                creds = self._auto_run_oauth()
+                
+        if not creds:
+            raise Exception("Gmail authentication failed. Please run: python scripts/setup_gmail_oauth.py")
+
         self.service = build('gmail', 'v1', credentials=creds)
         self.logger.info("Gmail service authenticated")
+    
+    def _auto_run_oauth(self):
+        """Automatically run OAuth setup if credentials.json exists."""
+        creds_file = Path('credentials.json')
+        
+        # Check if credentials.json exists
+        if not creds_file.exists():
+            self.logger.error("credentials.json not found!")
+            self.logger.error("To setup Gmail:")
+            self.logger.error("1. Follow docs/GMAIL_SETUP_GUIDE.md")
+            self.logger.error("2. Or run: python scripts/setup_gmail_oauth.py")
+            return None
+        
+        # Check if token.json exists but is invalid
+        token_path = Path('token.json')
+        if token_path.exists():
+            self.logger.info("Token expired/invalid, re-running OAuth...")
+        else:
+            self.logger.info("No token found, running OAuth setup...")
+        
+        try:
+            # Import OAuth libraries
+            from google_auth_oauthlib.flow import InstalledAppFlow
+            
+            # Run OAuth flow
+            flow = InstalledAppFlow.from_client_secrets_file(
+                str(creds_file),
+                ['https://www.googleapis.com/auth/gmail.readonly']
+            )
+            
+            self.logger.info("Opening browser for OAuth...")
+            self.logger.info("Please login and grant permissions")
+            
+            # Run local server for OAuth callback
+            creds = flow.run_local_server(
+                port=0,
+                open_browser=True,
+                success_message="Authentication successful! You can close this window.",
+                authorization_prompt_message="Please visit this URL: {url}"
+            )
+            
+            # Save token
+            token_path.write_text(creds.to_json())
+            self.logger.info(f"✓ Token saved to: {token_path}")
+            
+            return creds
+            
+        except Exception as e:
+            self.logger.error(f"OAuth setup failed: {e}")
+            self.logger.error("Manual setup: python scripts/setup_gmail_oauth.py")
+            return None
 
     def _load_processed_ids(self):
         """Load already processed email IDs from cache file."""
@@ -136,7 +193,11 @@ class GmailWatcher(BaseWatcher):
             try:
                 self._authenticate()
             except Exception as e:
-                self.logger.error(f"Authentication failed: {e}")
+                # Only log once, then silently skip
+                if not hasattr(self, '_auth_failed'):
+                    self.logger.error(f"Gmail authentication failed: {e}")
+                    self.logger.warning("Gmail watcher disabled - run OAuth setup or disable Gmail watcher")
+                    self._auth_failed = True
                 return []
 
         unread_msgs = []
