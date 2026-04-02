@@ -57,7 +57,7 @@ USE_QWEN = bool(QWEN_API_KEY)
 USE_DEEPSEEK = bool(DEEPSEEK_API_KEY)
 USE_OPENAI = bool(OPENAI_API_KEY)
 
-
+    
 # ============================================================================
 # SYSTEM PROMPTS - Anti-Hallucination Enforced
 # ============================================================================
@@ -308,10 +308,10 @@ def call_groq(prompt: str, system_prompt: str = SYSTEM_PROMPT_REASONING,
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
-        
+
         result = response.json()
         output = result['choices'][0]['message']['content']
-        
+
         if json_mode:
             try:
                 return json.loads(output)
@@ -319,9 +319,19 @@ def call_groq(prompt: str, system_prompt: str = SYSTEM_PROMPT_REASONING,
                 print(f"JSON parse error: {e}")
                 print(f"Raw output: {output}")
                 return None
-        
+
         return {"text": output}
-        
+
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 429:
+            print(f"ERROR: Groq rate limit exceeded. Wait 60 seconds and retry.")
+            print(f"Free tier limit: 30 requests/minute")
+        else:
+            print(f"ERROR: Groq HTTP error: {e}")
+        return None
+    except requests.exceptions.Timeout:
+        print(f"ERROR: Groq API call timed out")
+        return None
     except Exception as e:
         print(f"ERROR: Groq API call failed: {e}")
         return None
@@ -547,6 +557,8 @@ def ai_reasoning(message: str, task_type: str = "general") -> Optional[Dict[str,
         system_prompt = SYSTEM_PROMPT_EMAIL
     elif task_type == "whatsapp":
         system_prompt = SYSTEM_PROMPT_WHATSAPP
+    elif task_type in ("intent_analysis", "general"):
+        system_prompt = "You are a JSON-only assistant. Return only valid JSON with no markdown, no explanation, no code blocks. Just the raw JSON object."
     else:
         system_prompt = SYSTEM_PROMPT_REASONING
 

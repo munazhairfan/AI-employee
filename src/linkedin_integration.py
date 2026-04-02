@@ -118,34 +118,45 @@ def post_to_linkedin(text, visibility='PUBLIC'):
 def execute_linkedin_task(content, task_file):
     """
     Execute LinkedIn posting task from dashboard
-    
+
     Args:
         content: Task markdown content
         task_file: Task filename
-    
+
     Returns:
         dict with execution result
     """
-    # Extract post content from task
+    # Extract post content from task - try multiple fields
     post_text = extract_field(content, 'post_content')
-    
+
+    if not post_text:
+        # Try message_content as fallback
+        post_text = extract_field(content, 'message_content')
+
     if not post_text:
         # Try to extract from intent
         import re
         intent_match = re.search(r'\*\*Intent:\*\*\s*(.+?)(?:\(|$)', content)
         if intent_match:
             post_text = intent_match.group(1).strip()
-    
+
+    if not post_text:
+        # Last resort: get content after "## Original Message"
+        import re
+        content_match = re.search(r'## Original Message\s*\n+```\s*(.+?)\s*```', content, re.DOTALL)
+        if content_match:
+            post_text = content_match.group(1).strip()
+
     if not post_text:
         return {
             'success': False,
             'error': 'Cannot post: No content found',
-            'details': {'missing_field': 'post_content'}
+            'details': {'missing_field': 'post_content or message_content'}
         }
-    
+
     # Post to LinkedIn
     result = post_to_linkedin(post_text)
-    
+
     return result
 
 

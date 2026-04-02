@@ -1,6 +1,7 @@
 """
 Watcher Processor - AI Auto-Creates Tasks from Watcher Output
-Runs every 30 seconds, checks for new watcher output, creates tasks
+Runs every 5 minutes, processes 1 file at a time (LOW PRIORITY)
+Conservative rate limiting to avoid Groq API limits (30 req/min free tier)
 """
 
 import time
@@ -18,8 +19,13 @@ WATCHER_OUTPUT = Path('data/watcher_output')
 NEEDS_ACTION = Path('data/AI_Employee_Vault/Needs_Action')
 PROCESSED_LOG = Path('data/watcher_processed_log.json')
 
-# Rate limiting - process max emails per batch to avoid Groq rate limits
-MAX_EMAILS_PER_BATCH = 10  # Process 10 emails, then wait 30 seconds
+# Rate limiting - VERY CONSERVATIVE (background priority)
+# Background files: 1 file per 5 minutes = 0.2 calls/minute
+# This leaves 99% of AI budget for user actions!
+MAX_FILES_PER_BATCH = 1       # Only 1 file at a time
+BATCH_DELAY = 300             # Wait 5 minutes (300 seconds)
+MAIN_LOOP_INTERVAL = 300      # Check every 5 minutes
+INITIAL_DELAY = 120           # Wait 2 minutes at startup (let user actions go first)
 
 # Create folders
 WATCHER_OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -80,30 +86,76 @@ def create_task_from_file(watcher_file):
     # Get the message content (everything after frontmatter)
     message_start = content.find('---', content.find('---') + 3) + 3
     message_content = content[message_start:].strip()
-    
+
     # AI analyzes the message
     print(f"[AI] Analyzing message...")
-    
+
+    # Add source-specific context for better AI analysis
+    ai_input_text = message_content
+    source = metadata.get('source', '')
+    from_chat = metadata.get('from', '')
+
+    if source == 'whatsapp_watcher' and from_chat:
+        # Add WhatsApp-specific context to help AI extract phone number and format correctly
+        ai_input_text = f"""This is a WhatsApp message that needs to be processed.
+
+**Source:** WhatsApp
+**From:** {from_chat}
+
+**Message Content:**
+{message_content}
+
+**INSTRUCTIONS FOR AI:**
+1. This is a whatsapp_reply intent - the user needs to reply to this message
+2. Extract the phone number from the sender name if it looks like a phone number (e.g., +923322907397)
+3. The message_content entity should contain the suggested reply message
+4. Format the suggested_action with an arrow: → Send '[message]' to [phone] on WhatsApp
+5. Include confidence score and all extracted entities (phone, message content)"""
+
     # Try AI analysis with retries for rate limit
     max_retries = 3
     ai_result = None
-    
+
     for attempt in range(max_retries):
         try:
-            ai_result = analyze_intent(message_content)
+            ai_result = analyze_intent(ai_input_text)
             if ai_result and ai_result.get('primary_intent'):
-                break
+                # Check if AI returned an error
+                if 'error' in ai_result:
+                    print(f"[AI] AI returned error: {ai_result.get('error')}")
+                    if attempt < max_retries - 1:
+                        wait_time = 30 * (attempt + 1)
+                        print(f"[AI] Retrying in {wait_time} seconds...")
+                        time.sleep(wait_time)
+                        continue
+                else:
+                    break
         except Exception as e:
-            if attempt < max_retries - 1:
+            error_msg = str(e)
+            if '429' in error_msg or 'rate limit' in error_msg.lower():
+                print(f"[AI] Groq rate limit hit. Waiting 60 seconds...")
+                if attempt < max_retries - 1:
+                    time.sleep(60)
+                    continue
+            elif attempt < max_retries - 1:
                 wait_time = 30 * (attempt + 1)
-                print(f"[AI] Rate limited. Waiting {wait_time} seconds...")
+                print(f"[AI] AI error. Waiting {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
-                raise
-    
+                print(f"[AI] Analysis failed: {e}")
+                break
+
     if not ai_result or not ai_result.get('primary_intent'):
         print(f"[AI] Analysis failed after {max_retries} retries!")
-        return False
+        # Create informational task instead of failing
+        ai_result = {
+            'primary_intent': 'general_task',
+            'category': 'informational',
+            'can_auto_execute': False,
+            'confidence': 0,
+            'one_line_summary': 'AI analysis failed - manual review needed',
+            'expires_in_days': 7
+        }
     
     print(f"[AI] Intent: {ai_result.get('primary_intent')}")
     print(f"[AI] Category: {ai_result.get('category', 'unknown')}")
@@ -117,6 +169,7 @@ def create_task_from_file(watcher_file):
     if category == 'actionable' and can_auto:
         # Actionable task - goes to Pending_Approval
         task_folder = Path('data/AI_Employee_Vault/Pending_Approval')
+        task_folder.mkdir(parents=True, exist_ok=True)
         print(f"[AI] ✓ ACTIONABLE - Can auto-execute → Pending_Approval/")
     else:
         # Informational task - goes to To_Review
@@ -205,8 +258,9 @@ requires_human_review: true
     else:
         # Informational task format
         one_line_summary = ai_result.get('one_line_summary', 'Review this item')
+        from datetime import timedelta
         expires_in = ai_result.get('expires_in_days') or 7  # Default to 7 days
-        expiry_date = datetime.now().replace(day=datetime.now().day + expires_in).strftime('%Y-%m-%d')
+        expiry_date = (datetime.now() + timedelta(days=expires_in)).strftime('%Y-%m-%d')
         
         task_content = f"""---
 type: {task_type}
@@ -269,47 +323,58 @@ expires: {expiry_date}
 
 
 def run_processor():
-    """Main processor loop - runs every 30 seconds"""
+    """Main processor loop - VERY SLOW (background priority)"""
     print("=" * 60)
-    print("  Watcher AI Processor")
+    print("  Watcher AI Processor (BACKGROUND PRIORITY)")
     print("=" * 60)
     print()
-    print("Checking for new watcher output every 30 seconds...")
+    print(f"Checking for new watcher output every {MAIN_LOOP_INTERVAL//60} minutes...")
+    print(f"Processing: {MAX_FILES_PER_BATCH} file(s) per batch")
+    print(f"Delay between batches: {BATCH_DELAY//60} minutes")
     print("Press Ctrl+C to stop")
     print()
-    
+
     # Check AI availability
     ai_info = get_model_info()
     if ai_info['fallback_available']:
         print(f"AI Agent: {ai_info['primary']} ({ai_info['model']}) - Ready")
+        print(f"NOTE: Background processing is SLOW (1 file/5min) to prioritize user actions")
     else:
         print("WARNING: No AI agent available!")
         print()
-    
+
     print()
     
+    # Wait before first processing (let user actions go first)
+    print(f"[INFO] Waiting {INITIAL_DELAY//60} minutes before first processing...")
+    print(f"[INFO] User actions have priority - background files wait")
+    time.sleep(INITIAL_DELAY)
+    print(f"[INFO] Starting background processing loop...\n")
+
     iteration = 0
-    
+
     while True:
         iteration += 1
         timestamp = datetime.now().strftime('%H:%M:%S')
-        
+
         # Check for new files
         new_files = get_new_files()
-        
+
         if new_files:
-            print(f"\n[{timestamp}] Found {len(new_files)} new file(s)!")
-            
-            # Process in batches to avoid rate limits
+            print(f"\n[{timestamp}] Found {len(new_files)} file(s) in queue")
+
+            # Process ONE file at a time (very slow)
             batch_count = 0
-            
+
             for file in new_files:
-                # Check if we hit batch limit
-                if batch_count >= MAX_EMAILS_PER_BATCH:
-                    print(f"\n[{timestamp}] Reached batch limit ({MAX_EMAILS_PER_BATCH} emails). Waiting 30 seconds...")
-                    time.sleep(30)  # Wait for Groq rate limit to reset
-                    batch_count = 0  # Reset counter
-                
+                # Only 1 file per batch
+                if batch_count >= MAX_FILES_PER_BATCH:
+                    wait_minutes = BATCH_DELAY // 60
+                    print(f"\n[{timestamp}] Batch limit reached. Waiting {wait_minutes} minutes...")
+                    time.sleep(BATCH_DELAY)
+                    batch_count = 0
+
+                print(f"[{timestamp}] Processing: {file.name}")
                 success = create_task_from_file(file)
                 if success:
                     print(f"[{timestamp}] ✓ Processed: {file.name}")
@@ -317,10 +382,11 @@ def run_processor():
                 else:
                     print(f"[{timestamp}] ✗ Failed: {file.name}")
         else:
-            print(f"[{timestamp}] No new files (check #{iteration})")
-        
-        # Wait 30 seconds between checks
-        time.sleep(30)
+            wait_minutes = MAIN_LOOP_INTERVAL // 60
+            print(f"[{timestamp}] No new files (check #{iteration}, next check in {wait_minutes} min)")
+
+        # Wait 5 minutes between checks
+        time.sleep(MAIN_LOOP_INTERVAL)
 
 
 if __name__ == "__main__":

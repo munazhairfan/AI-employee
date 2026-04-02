@@ -27,10 +27,15 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 from intent_analyzer import analyze_intent, create_task_file, DROP_FOLDER, NEEDS_ACTION
 from ai_agent import get_model_info
+from ai_queue_manager import submit_user_task, get_task_status, call_ai_with_rate_limit
 from odoo_integration import execute_approved_task, extract_field
 from email_integration import execute_email_task, send_gmail_email
 from linkedin_integration import execute_linkedin_task, post_to_linkedin
 from whatsapp_integration import execute_whatsapp_task, send_whatsapp
+
+# Watcher imports
+import subprocess
+watchers = {}  # Track running watchers
 
 # Configuration
 import socket
@@ -92,13 +97,31 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             task_id = parsed.path.split('/')[-1]
             result = get_to_review_item_content(task_id)
             self.send_json_response(result)
+        elif parsed.path.startswith('/api/pending/'):
+            task_id = parsed.path.split('/')[-1]
+            result = get_pending_item_content(task_id)
+            self.send_json_response(result)
         
         elif parsed.path == '/api/activity':
             self.send_json_response(get_recent_activity())
-        
+
+        elif parsed.path == '/api/watchers/status':
+            # Get status of all watchers
+            result = get_watchers_status()
+            self.send_json_response(result)
+
         elif parsed.path == '/api/ai-info':
             self.send_json_response(get_model_info())
-        
+
+        elif parsed.path.startswith('/api/task-status/'):
+            # Get status of queued task (for polling)
+            task_id = parsed.path.split('/')[-1]
+            status = get_task_status(task_id)
+            if status:
+                self.send_json_response(status)
+            else:
+                self.send_json_response({'error': 'Task not found'})
+
         # Serve dashboard
         elif parsed.path == '/' or parsed.path == '/dashboard':
             self.serve_dashboard()
@@ -126,47 +149,54 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self.send_json_response(result)
         
         elif parsed.path == '/api/create-task':
-            # Create task from text with retry on rate limit
+            # Create task from text with rate limiting
             text = data.get('text', '')
-            
-            # Try AI analysis with retries for rate limit
-            max_retries = 3
-            intent_data = None
-            
-            for attempt in range(max_retries):
-                try:
-                    intent_data = analyze_intent(text)
-                    if intent_data and intent_data.get('primary_intent'):
-                        break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        wait_time = 30 * (attempt + 1)
-                        print(f"[Dashboard] Rate limited. Waiting {wait_time} seconds...")
-                        time.sleep(wait_time)
-                    else:
-                        # All retries failed
-                        self.send_json_response({
-                            'success': False,
-                            'error': f'AI service is busy. Please wait 60 seconds and try again. (Groq rate limit)',
-                            'retry_after': 60
-                        })
-                        return
-            
-            if not intent_data or not intent_data.get('primary_intent'):
+
+            try:
+                # Use rate-limited AI call (blocks until complete, max 2 minutes)
+                intent_data = call_ai_with_rate_limit(
+                    callback=lambda data: analyze_intent(data),
+                    task_data=text,
+                    priority='high',
+                    timeout=120
+                )
+
+                if not intent_data or not intent_data.get('primary_intent'):
+                    self.send_json_response({
+                        'success': False,
+                        'error': 'AI failed to analyze. Please try again with more details.',
+                        'retry_after': 30
+                    })
+                    return
+
+                task_file = create_task_file(intent_data, text, 'web_input.txt')
                 self.send_json_response({
-                    'success': False,
-                    'error': 'AI failed to analyze. Please try again with more details.',
-                    'retry_after': 30
+                    'success': True,
+                    'task_file': str(task_file),
+                    'intent': intent_data.get('primary_intent'),
+                    'category': intent_data.get('category', 'unknown')
                 })
-                return
-            
-            task_file = create_task_file(intent_data, text, 'web_input.txt')
-            self.send_json_response({
-                'success': True,
-                'task_file': str(task_file),
-                'intent': intent_data.get('primary_intent'),
-                'category': intent_data.get('category', 'unknown')
-            })
+
+            except Exception as e:
+                error_msg = str(e)
+                if 'timed out' in error_msg.lower():
+                    self.send_json_response({
+                        'success': False,
+                        'error': 'AI is busy. Please wait 60 seconds and try again.',
+                        'retry_after': 60
+                    })
+                elif 'rate limit' in error_msg.lower():
+                    self.send_json_response({
+                        'success': False,
+                        'error': 'AI rate limit reached. Please wait 30 seconds.',
+                        'retry_after': 30
+                    })
+                else:
+                    self.send_json_response({
+                        'success': False,
+                        'error': f'AI error: {error_msg}',
+                        'retry_after': 30
+                    })
         
         elif parsed.path == '/api/approve':
             # Approve a task
@@ -207,7 +237,37 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             # Process drop folder now
             result = process_drop_folder_now()
             self.send_json_response(result)
-        
+
+        elif parsed.path == '/api/watchers/gmail/start':
+            # Start Gmail watcher
+            result = start_gmail_watcher()
+            self.send_json_response(result)
+
+        elif parsed.path == '/api/watchers/gmail/stop':
+            # Stop Gmail watcher
+            result = stop_gmail_watcher()
+            self.send_json_response(result)
+
+        elif parsed.path == '/api/watchers/filesystem/start':
+            # Start Filesystem watcher
+            result = start_filesystem_watcher()
+            self.send_json_response(result)
+
+        elif parsed.path == '/api/watchers/filesystem/stop':
+            # Stop Filesystem watcher
+            result = stop_filesystem_watcher()
+            self.send_json_response(result)
+
+        elif parsed.path == '/api/watchers/whatsapp/start':
+            # Start WhatsApp watcher
+            result = start_whatsapp_watcher()
+            self.send_json_response(result)
+
+        elif parsed.path == '/api/watchers/whatsapp/stop':
+            # Stop WhatsApp watcher
+            result = stop_whatsapp_watcher()
+            self.send_json_response(result)
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -321,25 +381,20 @@ def get_pending_tasks():
 def extract_intent(content):
     """Extract the intent/suggested action from task content"""
     lines = content.split('\n')
-    in_intent_section = False
-    intent_lines = []
     
     for line in lines:
         if '**Intent:**' in line:
-            in_intent_section = True
             intent_text = line.split('**Intent:**')[1].strip()
             if intent_text:
                 return intent_text
-        elif in_intent_section:
-            if line.strip() and not line.startswith('**'):
-                intent_lines.append(line.strip())
-            elif line.startswith('##'):
-                break
     
-    if intent_lines:
-        return ' '.join(intent_lines[:2])
+    # Fallback: return first non-empty, non-header content line
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('---') and not stripped.startswith('#') and not stripped.startswith('**'):
+            return stripped[:120]
     
-    return content_preview
+    return 'Review required'
 
 
 def extract_missing_info(content):
@@ -476,6 +531,13 @@ def get_to_review_item_content(task_id):
     
     return {'error': 'Task not found'}
 
+def get_pending_item_content(task_id):
+    for folder in [NEEDS_ACTION, PENDING_APPROVAL]:
+        task_file = folder / f'{task_id}.md'
+        if task_file.exists():
+            content = task_file.read_text(encoding='utf-8')
+            return {'id': task_id, 'content': content}
+    return {'error': 'Not found'}
 
 def get_recent_activity():
     """Get recent activity from logs"""
@@ -767,7 +829,7 @@ def process_drop_folder_now():
             text=True,
             timeout=60
         )
-        
+
         return {
             'success': True,
             'output': result.stdout,
@@ -775,6 +837,173 @@ def process_drop_folder_now():
         }
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+
+def start_gmail_watcher():
+    """Start Gmail watcher in background"""
+    global watchers
+    
+    # Check if already running
+    if 'gmail' in watchers and watchers['gmail'].poll() is None:
+        return {'success': False, 'error': 'Gmail watcher already running'}
+
+    try:
+        # Start Gmail Watcher
+        watcher_path = Path('watchers') / 'gmail_watcher.py'
+        watcher_cmd = ['python', str(watcher_path)]
+
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+
+        watcher_process = subprocess.Popen(
+            watcher_cmd,
+            startupinfo=startupinfo,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+        watchers['gmail'] = watcher_process
+
+        # Wait 3 seconds to check if it started
+        import time
+        time.sleep(3)
+
+        if watcher_process.poll() is None:
+            return {'success': True, 'message': 'Gmail watcher started'}
+        else:
+            return {'success': False, 'error': 'Gmail watcher failed to start'}
+
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def stop_gmail_watcher():
+    """Stop Gmail watcher"""
+    global watchers
+    
+    if 'gmail' in watchers:
+        try:
+            watchers['gmail'].terminate()
+        except:
+            pass
+        del watchers['gmail']
+        return {'success': True, 'message': 'Gmail watcher stopped'}
+    else:
+        return {'success': False, 'error': 'Gmail watcher not running'}
+
+
+def start_filesystem_watcher():
+    """Start Filesystem watcher in background"""
+    global watchers
+    
+    # Check if already running
+    if 'filesystem' in watchers and watchers['filesystem'].poll() is None:
+        return {'success': False, 'error': 'Filesystem watcher already running'}
+
+    try:
+        # Start Filesystem Watcher
+        watcher_path = Path('watchers') / 'filesystem_watcher.py'
+        watcher_cmd = ['python', str(watcher_path)]
+
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+
+        watcher_process = subprocess.Popen(
+            watcher_cmd,
+            startupinfo=startupinfo,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+        watchers['filesystem'] = watcher_process
+
+        # Wait 3 seconds to check if it started
+        import time
+        time.sleep(3)
+
+        if watcher_process.poll() is None:
+            return {'success': True, 'message': 'Filesystem watcher started'}
+        else:
+            return {'success': False, 'error': 'Filesystem watcher failed to start'}
+
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def stop_filesystem_watcher():
+    """Stop Filesystem watcher"""
+    global watchers
+    
+    if 'filesystem' in watchers:
+        try:
+            watchers['filesystem'].terminate()
+        except:
+            pass
+        del watchers['filesystem']
+        return {'success': True, 'message': 'Filesystem watcher stopped'}
+    else:
+        return {'success': False, 'error': 'Filesystem watcher not running'}
+
+
+def start_whatsapp_watcher():
+    """Start WhatsApp watcher in background"""
+    global watchers
+    
+    # Check if already running
+    if 'whatsapp' in watchers and watchers['whatsapp'].poll() is None:
+        return {'success': False, 'error': 'WhatsApp watcher already running'}
+
+    try:
+        # Start WhatsApp Watcher
+        watcher_path = Path('watchers') / 'whatsapp_watcher.py'
+        watcher_cmd = ['python', str(watcher_path)]
+
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+
+        watcher_process = subprocess.Popen(
+            watcher_cmd,
+            startupinfo=startupinfo,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+        watchers['whatsapp'] = watcher_process
+
+        # Wait 3 seconds to check if it started
+        import time
+        time.sleep(3)
+
+        if watcher_process.poll() is None:
+            return {'success': True, 'message': 'WhatsApp watcher started'}
+        else:
+            return {'success': False, 'error': 'WhatsApp watcher failed to start'}
+
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def stop_whatsapp_watcher():
+    """Stop WhatsApp watcher"""
+    global watchers
+    
+    if 'whatsapp' in watchers:
+        try:
+            watchers['whatsapp'].terminate()
+        except:
+            pass
+        del watchers['whatsapp']
+        return {'success': True, 'message': 'WhatsApp watcher stopped'}
+    else:
+        return {'success': False, 'error': 'WhatsApp watcher not running'}
+
+
+def get_watchers_status():
+    """Get status of all watchers"""
+    global watchers
+    
+    status = {}
+    for name, process in watchers.items():
+        status[name] = 'running' if process.poll() is None else 'stopped'
+    
+    return status
 
 
 def log_activity(action, result):
@@ -1340,7 +1569,21 @@ def run_server():
     # Create dashboard if not exists
     if not DASHBOARD_PATH.exists():
         create_dashboard_html()
-    
+
+    # Auto-start AI Processor (handles all task processing)
+    print("[INFO] Starting AI Processor...")
+    processor_cmd = [sys.executable, 'src/watcher_processor.py']
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    processor_process = subprocess.Popen(
+        processor_cmd,
+        startupinfo=startupinfo,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+    )
+    print("[INFO] ✓ AI Processor started (runs in background)")
+    print()
+
     # Start server
     with socketserver.TCPServer(("", PORT), DashboardHandler) as httpd:
         print("=" * 60)
@@ -1351,19 +1594,24 @@ def run_server():
         print(f"  Drop Folder: {DROP_FOLDER.absolute()}")
         print()
         print("  Features:")
+        print("  - AI Processor running automatically")
         print("  - Drop TXT files for AI analysis")
         print("  - Type messages directly")
+        print("  - Start/Stop watchers from dashboard")
         print("  - Approve/Reject tasks")
         print("  - Real-time status")
         print()
         print("  Press Ctrl+C to stop")
         print("=" * 60)
         print()
-        
+
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\n[INFO] Server stopped")
+            print("\n[INFO] Stopping server...")
+            print("[INFO] Stopping AI Processor...")
+            processor_process.terminate()
+            print("[INFO] Server stopped")
 
 
 if __name__ == "__main__":

@@ -3,854 +3,1255 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Employee Vault - Dashboard</title>
+    <title>AI Employee — Command Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg: #0a0a0f;
+            --surface: #111118;
+            --surface2: #1a1a24;
+            --border: rgba(255,255,255,0.07);
+            --accent: #7c6aff;
+            --accent2: #00e5a0;
+            --warn: #ff8c42;
+            --danger: #ff4d6d;
+            --text: #e8e8f0;
+            --muted: #6b6b80;
+            --glow: rgba(124, 106, 255, 0.15);
         }
-        
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f7fa;
-            color: #2c3e50;
-            line-height: 1.6;
+            font-family: 'DM Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
         }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
+
+        /* Ambient background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -200px;
+            left: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(124,106,255,0.08) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
         }
-        
-        header {
-            background: #2c3e50;
-            color: white;
-            padding: 20px 0;
-            margin-bottom: 30px;
+
+        body::after {
+            content: '';
+            position: fixed;
+            bottom: -200px;
+            right: -100px;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(0,229,160,0.05) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
         }
-        
-        header h1 {
-            font-size: 24px;
-            font-weight: 600;
-        }
-        
-        .status-bar {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .status-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .status-card h3 {
-            font-size: 14px;
-            color: #7f8c8d;
-            margin-bottom: 10px;
-        }
-        
-        .status-card .value {
-            font-size: 24px;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .status-card .status {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-top: 10px;
-        }
-        
-        .status.active {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .status.inactive {
-            background: #95a5a6;
-            color: white;
-        }
-        
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 30px;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .card-header {
-            padding: 20px;
-            border-bottom: 1px solid #ecf0f1;
+
+        /* SIDEBAR */
+        .sidebar {
+            position: fixed;
+            left: 0; top: 0; bottom: 0;
+            width: 220px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+            padding: 28px 0;
         }
-        
-        .card-header h2 {
+
+        .logo {
+            padding: 0 24px 32px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .logo-mark {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
             font-size: 18px;
+        }
+
+        .logo h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: 0.05em;
+            line-height: 1.3;
+        }
+
+        .logo span {
+            font-size: 10px;
+            color: var(--muted);
+            font-weight: 400;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+        }
+
+        .nav {
+            flex: 1;
+            padding: 0 12px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 400;
+            transition: all 0.15s;
+            margin-bottom: 2px;
+            border: 1px solid transparent;
+        }
+
+        .nav-item:hover {
+            color: var(--text);
+            background: var(--surface2);
+        }
+
+        .nav-item.active {
+            color: var(--accent);
+            background: rgba(124,106,255,0.1);
+            border-color: rgba(124,106,255,0.2);
+        }
+
+        .nav-icon { font-size: 14px; }
+
+        .nav-badge {
+            margin-left: auto;
+            background: var(--accent);
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
             font-weight: 600;
         }
-        
-        .card-body {
+
+        .sidebar-footer {
+            padding: 16px 24px 0;
+            border-top: 1px solid var(--border);
+        }
+
+        .ai-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .ai-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--muted);
+            flex-shrink: 0;
+        }
+
+        .ai-dot.online { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+
+        /* MAIN */
+        .main {
+            margin-left: 220px;
+            padding: 32px 40px;
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+        }
+
+        /* PAGE HEADER */
+        .page-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 36px;
+            animation: fadeUp 0.4s ease both;
+        }
+
+        .page-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .page-sub {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .header-actions { display: flex; gap: 10px; }
+
+        /* STAT CARDS */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+            animation: fadeUp 0.4s ease 0.05s both;
+        }
+
+        .stat {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
             padding: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.2s;
         }
-        
-        .drop-zone {
-            border: 2px dashed #bdc3c7;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            margin-bottom: 20px;
-            transition: all 0.3s;
-        }
-        
-        .drop-zone:hover {
-            border-color: #3498db;
-            background: #f8f9fa;
-        }
-        
-        .drop-zone p {
-            color: #7f8c8d;
-            margin-bottom: 15px;
-        }
-        
-        textarea {
-            width: 100%;
-            min-height: 100px;
-            border: 1px solid #bdc3c7;
-            border-radius: 4px;
-            padding: 12px;
-            font-family: inherit;
-            resize: vertical;
-            margin-bottom: 15px;
-        }
-        
-        button {
-            background: #3498db;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.3s;
-        }
-        
-        button:hover {
-            background: #2980b9;
-        }
-        
-        button.success {
-            background: #27ae60;
-        }
-        
-        button.success:hover {
-            background: #229954;
-        }
-        
-        button.danger {
-            background: #e74c3c;
-        }
-        
-        button.danger:hover {
-            background: #c0392b;
-        }
-        
-        button.warning {
-            background: #f39c12;
-        }
-        
-        button.warning:hover {
-            background: #d68910;
-        }
-        
-        button.disabled, button[disabled] {
-            background: #95a5a6;
-            cursor: not-allowed;
+
+        .stat:hover { border-color: rgba(255,255,255,0.12); }
+
+        .stat::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--stat-color, var(--accent)), transparent);
             opacity: 0.6;
         }
-        
-        button.disabled:hover, button[disabled]:hover {
-            background: #95a5a6;
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 10px;
         }
-        
-        .confidence.low {
-            color: #e74c3c;
-            font-weight: bold;
+
+        .stat-value {
+            font-family: 'Syne', sans-serif;
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 6px;
+            line-height: 1;
         }
-        
-        .task-list {
-            max-height: 500px;
+
+        .stat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            padding: 3px 9px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        .pill-green { background: rgba(0,229,160,0.12); color: var(--accent2); }
+        .pill-yellow { background: rgba(255,140,66,0.12); color: var(--warn); }
+        .pill-red { background: rgba(255,77,109,0.12); color: var(--danger); }
+        .pill-purple { background: rgba(124,106,255,0.12); color: var(--accent); }
+
+        /* GRID */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+            animation: fadeUp 0.4s ease 0.1s both;
+        }
+
+        /* PANELS */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .panel-head {
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: 0.03em;
+        }
+
+        .panel-body { padding: 20px 22px; }
+
+        /* COMMAND INPUT */
+        .command-wrap {
+            position: relative;
+            margin-bottom: 14px;
+        }
+
+        .command-label {
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 8px;
+        }
+
+        textarea.command-input {
+            width: 100%;
+            min-height: 110px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            color: var(--text);
+            resize: vertical;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+            line-height: 1.6;
+        }
+
+        textarea.command-input::placeholder { color: var(--muted); }
+
+        textarea.command-input:focus {
+            border-color: rgba(124,106,255,0.4);
+            box-shadow: 0 0 0 3px rgba(124,106,255,0.08);
+        }
+
+        /* BUTTONS */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #8f7fff;
+            box-shadow: 0 4px 16px rgba(124,106,255,0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid var(--border);
+        }
+
+        .btn-ghost:hover {
+            color: var(--text);
+            border-color: rgba(255,255,255,0.15);
+            background: var(--surface2);
+        }
+
+        .btn-success {
+            background: rgba(0,229,160,0.12);
+            color: var(--accent2);
+            border: 1px solid rgba(0,229,160,0.2);
+        }
+
+        .btn-success:hover {
+            background: rgba(0,229,160,0.2);
+            box-shadow: 0 4px 12px rgba(0,229,160,0.15);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: rgba(255,77,109,0.1);
+            color: var(--danger);
+            border: 1px solid rgba(255,77,109,0.2);
+        }
+
+        .btn-danger:hover {
+            background: rgba(255,77,109,0.18);
+            transform: translateY(-1px);
+        }
+
+        .btn-sm { padding: 6px 12px; font-size: 11px; }
+
+        /* ANALYSIS RESULT */
+        .result-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-size: 11px;
+            color: var(--accent2);
+            line-height: 1.7;
+            margin-top: 12px;
+            display: none;
+            max-height: 200px;
             overflow-y: auto;
         }
-        
-        .task-item {
-            padding: 15px;
-            border: 1px solid #ecf0f1;
-            border-radius: 4px;
-            margin-bottom: 15px;
-        }
-        
-        .task-item:last-child {
-            margin-bottom: 0;
-        }
-        
-        .task-item .meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        
-        .task-item .type {
-            background: #3498db;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        
-        .task-item .confidence {
-            font-size: 12px;
-            color: #7f8c8d;
-        }
-        
-        .task-item .preview {
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        
-        .task-item .intent {
-            background: #f8f9fa;
-            padding: 10px;
-            border-left: 3px solid #3498db;
-            margin: 10px 0;
-            font-size: 13px;
-        }
-        
-        .task-item .missing-info {
-            color: #e74c3c;
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
-        
-        .task-item .actions {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .activity-list {
+
+        /* TASK ITEMS */
+        .task-scroll {
             max-height: 400px;
             overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--surface2) transparent;
         }
-        
-        .activity-item {
-            padding: 10px 0;
-            border-bottom: 1px solid #ecf0f1;
-            font-size: 14px;
+
+        .task-item {
+            padding: 14px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            background: var(--surface2);
+            transition: border-color 0.15s, transform 0.15s;
+            animation: fadeUp 0.3s ease both;
         }
-        
-        .activity-item:last-child {
-            border-bottom: none;
+
+        .task-item:hover {
+            border-color: rgba(255,255,255,0.1);
+            transform: translateY(-1px);
         }
-        
-        .activity-item .time {
-            color: #7f8c8d;
+
+        .task-item:last-child { margin-bottom: 0; }
+
+        .task-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .task-type {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 6px;
+            background: rgba(124,106,255,0.12);
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .task-conf {
+            font-size: 10px;
+            color: var(--muted);
+            margin-left: auto;
+        }
+
+        .task-preview {
             font-size: 12px;
+            color: var(--text);
+            margin-bottom: 10px;
+            line-height: 1.5;
+            opacity: 0.85;
         }
-        
-        .loading {
+
+        .task-intent {
+            font-size: 11px;
+            color: var(--accent2);
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .task-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* WATCHERS */
+        .watcher-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            animation: fadeUp 0.4s ease 0.15s both;
+        }
+
+        .watcher-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: border-color 0.2s;
+        }
+
+        .watcher-card:hover { border-color: rgba(255,255,255,0.1); }
+
+        .watcher-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .watcher-name {
+            font-family: 'Syne', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .watcher-icon { font-size: 16px; }
+
+        .watcher-indicator {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+            transition: all 0.3s;
+        }
+
+        .watcher-indicator.on {
+            background: var(--accent2);
+            box-shadow: 0 0 8px var(--accent2);
+            animation: pulse 2s infinite;
+        }
+
+        .watcher-status {
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .watcher-toggle {
+            width: 100%;
             text-align: center;
-            padding: 40px;
-            color: #7f8c8d;
         }
-        
-        .refresh-btn {
-            background: transparent;
-            border: 1px solid #bdc3c7;
-            color: #7f8c8d;
-            padding: 5px 15px;
+
+        /* EMPTY STATE */
+        .empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--muted);
         }
-        
-        .refresh-btn:hover {
-            background: #ecf0f1;
+
+        .empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
+
+        .empty-text {
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        /* TOAST */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toast {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 18px;
+            font-size: 12px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            max-width: 320px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+
+        .toast.success { border-left: 3px solid var(--accent2); }
+        .toast.error { border-left: 3px solid var(--danger); }
+        .toast.info { border-left: 3px solid var(--accent); }
+
+        /* SPINNER */
+        .spinner {
+            width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.15);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        /* ANIMATIONS */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 6px var(--accent2); }
+            50% { box-shadow: 0 0 14px var(--accent2); }
+        }
+
+        /* SCROLLBAR */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
+
+        /* LOADING SKELETON */
+        .skeleton {
+            background: linear-gradient(90deg, var(--surface2) 25%, var(--surface) 50%, var(--surface2) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 6px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .loading-row {
+            height: 60px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* REVIEW TASKS */
+        .review-item {
+            padding: 14px 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            background: var(--surface2);
+            transition: all 0.15s;
+        }
+
+        .review-item:hover { border-color: rgba(255,255,255,0.1); }
+
+        .review-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .review-from {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent2);
+        }
+
+        .review-expires {
+            font-size: 10px;
+            color: var(--muted);
+            margin-left: auto;
+        }
+
+        .review-summary {
+            font-size: 12px;
+            color: var(--text);
+            opacity: 0.8;
+            margin-bottom: 10px;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>AI Employee Vault - Dashboard</h1>
+
+<div class="sidebar">
+    <div class="logo">
+        <div class="logo-mark">⚡</div>
+        <h1>AI Employee</h1>
+        <span>Command Center</span>
+    </div>
+
+    <nav class="nav">
+        <div class="nav-item active" onclick="showSection('dashboard')">
+            <span class="nav-icon">◈</span> Dashboard
         </div>
-    </header>
-    
-    <div class="container">
-        <!-- Status Bar -->
-        <div class="status-bar">
-            <div class="status-card">
-                <h3>AI Agent</h3>
-                <div class="value" id="ai-model">Loading...</div>
-                <span class="status inactive" id="ai-status">Checking...</span>
-            </div>
-            
-            <div class="status-card">
-                <h3>Watchers</h3>
-                <div class="value" id="watcher-status">Stopped</div>
-                <span class="status inactive" id="watcher-indicator">Offline</span>
-            </div>
-            
-            <div class="status-card">
-                <h3>Pending Tasks</h3>
-                <div class="value" id="pending-count">0</div>
-                <span class="status" style="background: #f39c12; color: white;">Awaiting Review</span>
-            </div>
-            
-            <div class="status-card">
-                <h3>Processed Today</h3>
-                <div class="value" id="processed-count">0</div>
-                <span class="status active">Completed</span>
-            </div>
+        <div class="nav-item" onclick="showSection('tasks')">
+            <span class="nav-icon">◉</span> Pending Tasks
+            <span class="nav-badge" id="nav-badge">0</span>
         </div>
-        
-        <!-- Main Grid -->
-        <div class="main-grid">
-            <!-- Create Task -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Create New Task</h2>
-                    <button class="refresh-btn" onclick="processDropFolder()">Process Drop Folder</button>
-                </div>
-                <div class="card-body">
-                    <div class="drop-zone">
-                        <p>Drop TXT files in: <strong id="drop-folder-path">drop_folder/</strong></p>
-                        <p>or type a message below:</p>
-                    </div>
-                    
-                    <textarea id="task-input" placeholder="Example: Customer John needs invoice #12345 for $500 sent to john@example.com"></textarea>
-                    
-                    <button onclick="createTask()">Analyze & Create Task</button>
-                    
-                    <div id="analysis-result" style="margin-top: 20px; display: none;">
-                        <h4 style="margin-bottom: 10px;">AI Analysis:</h4>
-                        <pre id="analysis-output" style="background: #f8f9fa; padding: 15px; border-radius: 4px; font-size: 12px; overflow-x: auto;"></pre>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Pending Tasks -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>Pending Approval</h2>
-                    <button class="refresh-btn" onclick="loadPendingTasks()">Refresh</button>
-                </div>
-                <div class="card-body">
-                    <div class="task-list" id="task-list">
-                        <div class="loading">Loading tasks...</div>
-                    </div>
-                </div>
-            </div>
+        <div class="nav-item" onclick="showSection('review')">
+            <span class="nav-icon">◎</span> To Review
         </div>
-        
-        <!-- To Review Section -->
-        <div class="card" style="margin-top: 30px;">
-            <div class="card-header">
-                <h2>To Review (Informational)</h2>
-                <button class="refresh-btn" onclick="loadToReview()">Refresh</button>
-            </div>
-            <div class="card-body">
-                <div class="task-list" id="to-review-list">
-                    <div class="loading">Loading review items...</div>
-                </div>
-            </div>
+        <div class="nav-item" onclick="showSection('watchers')">
+            <span class="nav-icon">◐</span> Watchers
         </div>
-        
-        <!-- Activity Log -->
-        <div class="card">
-            <div class="card-header">
-                <h2>Recent Activity</h2>
-                <button class="refresh-btn" onclick="loadActivity()">Refresh</button>
-            </div>
-            <div class="card-body">
-                <div class="activity-list" id="activity-list">
-                    <div class="loading">Loading activity...</div>
-                </div>
-            </div>
+        <div class="nav-item" onclick="showSection('command')">
+            <span class="nav-icon">▸</span> Command
+        </div>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="ai-status">
+            <div class="ai-dot" id="ai-dot"></div>
+            <span id="ai-model-small">Checking AI...</span>
         </div>
     </div>
+</div>
+
+<main class="main">
+
+    <!-- DASHBOARD SECTION -->
+    <section id="section-dashboard">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Overview</div>
+                <div class="page-sub">Real-time system status and task pipeline</div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-ghost btn-sm" onclick="refreshAll()">↺ Refresh</button>
+                <button class="btn btn-primary btn-sm" onclick="showSection('command')">+ New Task</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat" style="--stat-color: var(--accent)">
+                <div class="stat-label">Pending Approval</div>
+                <div class="stat-value" id="stat-pending">—</div>
+                <span class="stat-pill pill-purple">Awaiting review</span>
+            </div>
+            <div class="stat" style="--stat-color: var(--accent2)">
+                <div class="stat-label">Processed Today</div>
+                <div class="stat-value" id="stat-processed">—</div>
+                <span class="stat-pill pill-green">Completed</span>
+            </div>
+            <div class="stat" style="--stat-color: var(--warn)">
+                <div class="stat-label">Watchers</div>
+                <div class="stat-value" id="stat-watchers">—</div>
+                <span class="stat-pill pill-yellow" id="stat-watcher-pill">Checking</span>
+            </div>
+            <div class="stat" style="--stat-color: var(--accent2)">
+                <div class="stat-label">AI Engine</div>
+                <div class="stat-value" style="font-size: 16px; padding-top: 6px;" id="stat-ai">—</div>
+                <span class="stat-pill pill-green" id="stat-ai-pill">Active</span>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">Recent Pending</span>
+                    <button class="btn btn-ghost btn-sm" onclick="showSection('tasks')">View all →</button>
+                </div>
+                <div class="panel-body">
+                    <div id="dash-tasks-list">
+                        <div class="loading-row skeleton"></div>
+                        <div class="loading-row skeleton" style="height:50px; opacity:0.6"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">Activity Log</span>
+                    <button class="btn btn-ghost btn-sm" onclick="loadActivity()">↺</button>
+                </div>
+                <div class="panel-body">
+                    <div class="task-scroll" id="activity-list" style="max-height:260px;">
+                        <div class="loading-row skeleton"></div>
+                        <div class="loading-row skeleton" style="height:40px; opacity:0.6"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- TASKS SECTION -->
+    <section id="section-tasks" style="display:none">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Pending Tasks</div>
+                <div class="page-sub">Review and approve AI-generated actions</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="loadPendingTasks()">↺ Refresh</button>
+        </div>
+
+        <div class="panel">
+            <div class="panel-body">
+                <div class="task-scroll" id="tasks-full-list">
+                    <div class="loading-row skeleton"></div>
+                    <div class="loading-row skeleton" style="opacity:0.7"></div>
+                    <div class="loading-row skeleton" style="opacity:0.4"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- REVIEW SECTION -->
+    <section id="section-review" style="display:none">
+        <div class="page-header">
+            <div>
+                <div class="page-title">To Review</div>
+                <div class="page-sub">Informational items that need your attention</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="loadReviewTasks()">↺ Refresh</button>
+        </div>
+
+        <div class="panel">
+            <div class="panel-body">
+                <div class="task-scroll" id="review-list">
+                    <div class="loading-row skeleton"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- WATCHERS SECTION -->
+    <section id="section-watchers" style="display:none">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Watchers</div>
+                <div class="page-sub">Background monitoring agents</div>
+            </div>
+        </div>
+
+        <div class="watcher-grid">
+            <div class="watcher-card">
+                <div class="watcher-head">
+                    <div class="watcher-name">
+                        <span class="watcher-icon">✉</span> Gmail
+                    </div>
+                    <div class="watcher-indicator" id="gmail-dot"></div>
+                </div>
+                <div class="watcher-status" id="gmail-status">Stopped</div>
+                <button class="btn btn-ghost btn-sm watcher-toggle" id="gmail-btn" onclick="toggleWatcher('gmail')">Start</button>
+            </div>
+
+            <div class="watcher-card">
+                <div class="watcher-head">
+                    <div class="watcher-name">
+                        <span class="watcher-icon">💬</span> WhatsApp
+                    </div>
+                    <div class="watcher-indicator" id="whatsapp-dot"></div>
+                </div>
+                <div class="watcher-status" id="whatsapp-status">Stopped</div>
+                <button class="btn btn-ghost btn-sm watcher-toggle" id="whatsapp-btn" onclick="toggleWatcher('whatsapp')">Start</button>
+            </div>
+
+            <div class="watcher-card">
+                <div class="watcher-head">
+                    <div class="watcher-name">
+                        <span class="watcher-icon">📁</span> Filesystem
+                    </div>
+                    <div class="watcher-indicator" id="filesystem-dot"></div>
+                </div>
+                <div class="watcher-status" id="filesystem-status">Stopped</div>
+                <button class="btn btn-ghost btn-sm watcher-toggle" id="filesystem-btn" onclick="toggleWatcher('filesystem')">Start</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- COMMAND SECTION -->
+    <section id="section-command" style="display:none">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Command</div>
+                <div class="page-sub">Issue instructions directly to AI Employee</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">Natural Language Input</span>
+                </div>
+                <div class="panel-body">
+                    <div class="command-label">Describe what you need done</div>
+                    <div class="command-wrap">
+                        <textarea class="command-input" id="task-input" 
+                            placeholder="e.g. Send invoice for $500 to Hamza at hamza@example.com&#10;e.g. Post on LinkedIn about our new product launch&#10;e.g. Reply to WhatsApp message from +923001234567"></textarea>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" id="analyze-btn" onclick="createTask()">
+                            ▸ Analyze & Create Task
+                        </button>
+                        <button class="btn btn-ghost" onclick="processDropFolder()">
+                            ⬆ Process Drop Folder
+                        </button>
+                    </div>
+                    <div class="result-box" id="analysis-result"></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">Quick Examples</span>
+                </div>
+                <div class="panel-body">
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button class="btn btn-ghost" style="text-align:left; justify-content:flex-start;" 
+                            onclick="fillExample('Send invoice for $750 to ABC Corp for web development services')">
+                            📄 Invoice example
+                        </button>
+                        <button class="btn btn-ghost" style="text-align:left; justify-content:flex-start;"
+                            onclick="fillExample('Send email to client@example.com about project update')">
+                            ✉ Email example
+                        </button>
+                        <button class="btn btn-ghost" style="text-align:left; justify-content:flex-start;"
+                            onclick="fillExample('Post on LinkedIn: Excited to share our latest AI project!')">
+                            💼 LinkedIn example
+                        </button>
+                        <button class="btn btn-ghost" style="text-align:left; justify-content:flex-start;"
+                            onclick="fillExample('Reply to WhatsApp from +923001234567 with: Will get back to you shortly')">
+                            💬 WhatsApp example
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const API = '';
+let pendingTasks = [];
+let watcherStates = {};
+
+// ─── NAVIGATION ───────────────────────────────────────────────
+
+function showSection(name) {
+    document.querySelectorAll('section[id^="section-"]').forEach(s => s.style.display = 'none');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     
-    <script>
-        // API base URL
-        const API = '';
-        
-        // Load initial data
-        loadStatus();
-        loadPendingTasks();
-        loadToReview();
-        loadActivity();
+    document.getElementById('section-' + name).style.display = 'block';
+    
+    const navItems = document.querySelectorAll('.nav-item');
+    const idx = ['dashboard','tasks','review','watchers','command'].indexOf(name);
+    if (idx >= 0) navItems[idx].classList.add('active');
+    
+    if (name === 'tasks') loadPendingTasks();
+    if (name === 'review') loadReviewTasks();
+    if (name === 'watchers') loadWatcherStatus();
+    if (name === 'dashboard') refreshAll();
+}
 
-        // Auto-refresh every 10 seconds
-        setInterval(() => {
+// ─── DATA LOADERS ─────────────────────────────────────────────
+
+async function refreshAll() {
+    loadStatus();
+    loadDashTasks();
+    loadActivity();
+}
+
+async function loadStatus() {
+    try {
+        const res = await fetch(`${API}/api/status`);
+        const d = await res.json();
+        
+        document.getElementById('stat-pending').textContent = d.pending_count ?? '0';
+        document.getElementById('stat-processed').textContent = d.processed_today ?? '0';
+        document.getElementById('stat-ai').textContent = (d.ai_model || 'Unknown').split('(')[0].trim();
+        document.getElementById('ai-model-small').textContent = d.ai_model || 'Unknown';
+        document.getElementById('nav-badge').textContent = d.pending_count ?? '0';
+        
+        const aiDot = document.getElementById('ai-dot');
+        aiDot.className = 'ai-dot' + (d.ai_available ? ' online' : '');
+        
+        const statWatchers = d.watchers_running;
+        document.getElementById('stat-watchers').textContent = statWatchers ? 'Online' : 'Off';
+        const pill = document.getElementById('stat-watcher-pill');
+        pill.textContent = statWatchers ? 'Running' : 'Stopped';
+        pill.className = 'stat-pill ' + (statWatchers ? 'pill-green' : 'pill-yellow');
+    } catch(e) {
+        console.error('Status error', e);
+    }
+}
+
+async function loadDashTasks() {
+    try {
+        const res = await fetch(`${API}/api/pending`);
+        const tasks = await res.json();
+        pendingTasks = tasks;
+        
+        const el = document.getElementById('dash-tasks-list');
+        if (!tasks.length) {
+            el.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><div class="empty-text">No pending tasks</div></div>';
+            return;
+        }
+        
+        el.innerHTML = tasks.slice(0,3).map(t => renderTaskItem(t, true)).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function loadPendingTasks() {
+    try {
+        const res = await fetch(`${API}/api/pending`);
+        const tasks = await res.json();
+        pendingTasks = tasks;
+        
+        document.getElementById('nav-badge').textContent = tasks.length;
+        
+        const el = document.getElementById('tasks-full-list');
+        if (!tasks.length) {
+            el.innerHTML = '<div class="empty"><div class="empty-icon">✓</div><div class="empty-text">All clear — no tasks waiting</div></div>';
+            return;
+        }
+        
+        el.innerHTML = tasks.map(t => renderTaskItem(t, false)).join('');
+    } catch(e) { console.error(e); }
+}
+
+function renderTaskItem(t, compact) {
+    return `<div class="task-item" id="task-${t.id}">
+        <div class="task-meta">
+            <span class="task-type">${t.type || 'unknown'}</span>
+            <span class="task-conf">confidence ${t.confidence || 0}%</span>
+        </div>
+        ${t.intent ? `<div class="task-intent">→ ${t.intent}</div>` : ''}
+        <div class="task-preview">${t.preview || 'No preview'}</div>
+        <div class="task-actions">
+            <button class="btn btn-success btn-sm" onclick="approveTask('${t.id}')">✓ Approve</button>
+            <button class="btn btn-danger btn-sm" onclick="rejectTask('${t.id}')">✕ Reject</button>
+        </div>
+    </div>`;
+}
+
+async function loadReviewTasks() {
+    try {
+        const res = await fetch(`${API}/api/to-review`);
+        const tasks = await res.json();
+        
+        const el = document.getElementById('review-list');
+        if (!tasks.length) {
+            el.innerHTML = '<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">Nothing to review right now</div></div>';
+            return;
+        }
+        
+        el.innerHTML = tasks.map(t => `
+            <div class="review-item">
+                <div class="review-meta">
+                    <span class="review-from">${t.from || 'Unknown'}</span>
+                    <span class="review-expires">expires ${t.expires || 'N/A'}</span>
+                </div>
+                <div class="review-summary">${t.summary || t.subject || 'Item to review'}</div>
+                <div class="task-actions">
+                    <button class="btn btn-success btn-sm" onclick="markDone('${t.id}')">✓ Done</button>
+                    <button class="btn btn-ghost btn-sm" onclick="archiveReview('${t.id}')">Archive</button>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function loadActivity() {
+    try {
+        const res = await fetch(`${API}/api/activity`);
+        const acts = await res.json();
+        
+        const el = document.getElementById('activity-list');
+        if (!acts.length) {
+            el.innerHTML = '<div class="empty" style="padding:20px"><div class="empty-text">No recent activity</div></div>';
+            return;
+        }
+        
+        el.innerHTML = acts.reverse().map(a => `
+            <div style="padding:8px 0; border-bottom:1px solid var(--border); font-size:11px; display:flex; gap:10px; align-items:flex-start;">
+                <span style="color:var(--muted); flex-shrink:0;">${a.time}</span>
+                <span style="color:var(--text); opacity:0.8;">${a.action}: ${a.result}</span>
+            </div>
+        `).join('');
+    } catch(e) { console.error(e); }
+}
+
+async function loadWatcherStatus() {
+    try {
+        const res = await fetch(`${API}/api/watchers/status`);
+        const status = await res.json();
+        watcherStates = status;
+        
+        ['gmail','whatsapp','filesystem'].forEach(name => {
+            const running = status[name] === 'running';
+            const dot = document.getElementById(name + '-dot');
+            const stat = document.getElementById(name + '-status');
+            const btn = document.getElementById(name + '-btn');
+            
+            if (dot) dot.className = 'watcher-indicator' + (running ? ' on' : '');
+            if (stat) stat.textContent = running ? 'Running' : 'Stopped';
+            if (btn) {
+                btn.textContent = running ? 'Stop' : 'Start';
+                btn.className = 'btn btn-sm watcher-toggle ' + (running ? 'btn-danger' : 'btn-success');
+            }
+        });
+    } catch(e) { console.error(e); }
+}
+
+// ─── ACTIONS ──────────────────────────────────────────────────
+
+async function createTask() {
+    const text = document.getElementById('task-input').value.trim();
+    if (!text) { toast('Enter a command first', 'error'); return; }
+    
+    const btn = document.getElementById('analyze-btn');
+    btn.innerHTML = '<div class="spinner"></div> Analyzing...';
+    btn.disabled = true;
+    
+    try {
+        const res = await fetch(`${API}/api/create-task`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            document.getElementById('analysis-result').style.display = 'block';
+            document.getElementById('analysis-result').textContent = JSON.stringify(result, null, 2);
+            document.getElementById('task-input').value = '';
+            toast('Task created — ' + (result.intent || 'check pending'), 'success');
             loadStatus();
-            loadPendingTasks();
-            loadToReview();
-        }, 10000);
-        
-        async function loadStatus() {
-            try {
-                const res = await fetch(`${API}/api/status`);
-                const data = await res.json();
-                
-                document.getElementById('ai-model').textContent = data.ai_model;
-                document.getElementById('ai-status').textContent = data.ai_available ? 'Active' : 'Unavailable';
-                document.getElementById('ai-status').className = `status ${data.ai_available ? 'active' : 'inactive'}`;
-                
-                document.getElementById('watcher-status').textContent = data.watchers_running ? 'Running' : 'Stopped';
-                document.getElementById('watcher-indicator').textContent = data.watchers_running ? 'Online' : 'Offline';
-                document.getElementById('watcher-indicator').className = `status ${data.watchers_running ? 'active' : 'inactive'}`;
-                
-                document.getElementById('pending-count').textContent = data.pending_count;
-                document.getElementById('processed-count').textContent = data.processed_today;
-                document.getElementById('drop-folder-path').textContent = data.drop_folder;
-            } catch (err) {
-                console.error('Status error:', err);
-            }
+        } else {
+            toast(result.error || 'Analysis failed', 'error');
         }
-        
-        async function loadPendingTasks() {
-            try {
-                const res = await fetch(`${API}/api/pending`);
-                const tasks = await res.json();
-                
-                const container = document.getElementById('task-list');
-                
-                if (tasks.length === 0) {
-                    container.innerHTML = '<div class="loading">No pending tasks</div>';
-                    return;
-                }
-                
-                container.innerHTML = tasks.map(task => {
-                    const confidence = parseInt(task.confidence) || 0;
-                    const hasCriticalMissing = task.missing_info && task.missing_info.length > 0;
-                    const isLowConfidence = confidence < 50;
-                    const isMediumConfidence = confidence >= 50 && confidence < 80;
-                    
-                    // Check for specific critical missing fields based on task type
-                    const criticalFields = {
-                        'odoo_invoice': ['customer_name', 'amount'],
-                        'email_send': ['customer_email'],
-                        'whatsapp_reply': ['customer_phone']
-                    };
-                    
-                    const taskCriticalFields = criticalFields[task.type] || [];
-                    const hasRequiredMissing = taskCriticalFields.some(field => 
-                        task.missing_info && task.missing_info.some(m => m.includes(field))
-                    );
-                    
-                    // Determine button state
-                    const approveDisabled = isLowConfidence && hasCriticalMissing || hasRequiredMissing;
-                    const approveClass = approveDisabled ? 'disabled' : (isMediumConfidence ? 'warning' : 'success');
-                    const approveText = approveDisabled ? 'Missing Required Info' : 'Approve';
-                    
-                    return `
-                    <div class="task-item">
-                        <div class="meta">
-                            <span class="type">${task.type}</span>
-                            <span class="confidence ${isLowConfidence ? 'low' : ''}" title="${hasCriticalMissing ? 'Missing: ' + task.missing_info.join(', ') : 'All information present'}">
-                                Confidence: ${confidence}% 
-                                ${hasCriticalMissing && isLowConfidence ? '⚠️ Low' : ''}
-                                ${hasCriticalMissing && isMediumConfidence ? '⚠️ Review' : ''}
-                            </span>
-                        </div>
-                        <div class="intent" style="background: #f8f9fa; padding: 10px; border-left: 3px solid #3498db; margin: 10px 0; font-size: 13px;">
-                            <strong>Task:</strong> ${task.intent || task.preview}
-                        </div>
-                        ${hasCriticalMissing ? `
-                            <div class="missing-info" style="color: #e74c3c; font-size: 12px; margin-bottom: 10px;">
-                                <strong>⚠️ Missing:</strong> ${task.missing_info.slice(0, 3).join(', ')}${task.missing_info.length > 3 ? '...' : ''}
-                            </div>
-                        ` : ''}
-                        <div class="actions">
-                            <button class="${approveClass}" onclick="${approveDisabled ? `alert('This task is missing required information:\\n\\n' + '${task.missing_info.join(', ')}' + '\\n\\nPlease either:\\n1. Click Reject and create a new task with complete info, OR\\n2. Contact the person who requested this to get missing details')` : `approveTask('${task.id}')`}" ${approveDisabled ? 'disabled' : ''}>
-                                ${approveText}
-                            </button>
-                            <button class="danger" onclick="rejectTask('${task.id}')">Reject</button>
-                        </div>
-                    </div>
-                    `;
-                }).join('');
-            } catch (err) {
-                console.error('Load tasks error:', err);
-            }
-        }
-        
-        async function loadToReview() {
-            try {
-                const res = await fetch(`${API}/api/to-review`);
-                const tasks = await res.json();
-                
-                const container = document.getElementById('to-review-list');
-                
-                if (tasks.length === 0) {
-                    container.innerHTML = '<div class="loading">No items to review</div>';
-                    return;
-                }
-                
-                container.innerHTML = tasks.map(task => `
-                    <div class="task-item" onclick="viewReviewItem('${task.id}')" style="cursor: pointer;">
-                        <div class="meta">
-                            <span class="type">${task.type}</span>
-                            <span class="confidence">Expires: ${task.expires || 'N/A'}</span>
-                        </div>
-                        <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 3px solid #3498db;">
-                            <strong>From:</strong> ${task.from}<br>
-                            <strong>Summary:</strong> ${task.summary}
-                        </div>
-                        <div style="font-size: 12px; color: #7f8c8d; margin: 10px 0;">
-                            <em>Click to view full content</em>
-                        </div>
-                        <div class="actions">
-                            <button class="success" onclick="event.stopPropagation(); markAsDone('${task.id}')">✓ Mark as Done</button>
-                            <button class="danger" onclick="event.stopPropagation(); archiveReview('${task.id}')">Archive</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (err) {
-                console.error('Load to-review error:', err);
-            }
-        }
-        
-        async function viewReviewItem(taskId) {
-            try {
-                // Fetch full task content
-                const res = await fetch(`${API}/api/to-review/${taskId}`);
-                const task = await res.json();
-                
-                if (task.content) {
-                    // Show in modal
-                    const modal = document.createElement('div');
-                    modal.style.cssText = `
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: rgba(0,0,0,0.5);
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        z-index: 1000;
-                    `;
-                    
-                    // Extract just the message content (skip markdown headers)
-                    let cleanContent = task.content;
-                    
-                    // Remove markdown headers like "# To Review"
-                    cleanContent = cleanContent.replace(/^# .+$/gm, '');
-                    cleanContent = cleanContent.replace(/^\*\*.+?\*\*$/gm, '');
-                    cleanContent = cleanContent.replace(/^\*\s+.+$/gm, '');
-                    cleanContent = cleanContent.replace(/^---$/gm, '');
-                    cleanContent = cleanContent.replace(/^\s*[\r\n]/gm, '');
-                    
-                    // Remove sections that aren't the actual message
-                    const sections = ['## Approval Actions', '## Actions', '- [ ] Approve', '- [ ] Mark as Done', '- [ ] Archive', '*Auto-generated'];
-                    sections.forEach(section => {
-                        const idx = cleanContent.indexOf(section);
-                        if (idx > 0) {
-                            cleanContent = cleanContent.substring(0, idx);
-                        }
-                    });
-                    
-                    cleanContent = cleanContent.trim();
-                    
-                    modal.innerHTML = `
-                        <div style="
-                            background: white;
-                            padding: 30px;
-                            border-radius: 8px;
-                            max-width: 800px;
-                            max-height: 80vh;
-                            overflow-y: auto;
-                            position: relative;
-                        ">
-                            <button onclick="this.closest('div[style*=fixed]').remove()" style="
-                                position: absolute;
-                                top: 10px;
-                                right: 10px;
-                                background: #e74c3c;
-                                color: white;
-                                border: none;
-                                padding: 5px 15px;
-                                border-radius: 4px;
-                                cursor: pointer;
-                            ">✕ Close</button>
-                            
-                            <h2 style="margin-bottom: 20px; color: #2c3e50;">${task.subject || 'Item to Review'}</h2>
-                            
-                            <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #3498db;">
-                                <div style="margin-bottom: 8px;"><strong>From:</strong> ${task.from || 'Unknown'}</div>
-                                <div style="margin-bottom: 8px;"><strong>Received:</strong> ${task.received || 'Unknown'}</div>
-                                <div style="margin-bottom: 8px;"><strong>Type:</strong> ${task.type ? task.type.replace('_', ' ').toUpperCase() : 'INFORMATIONAL'}</div>
-                                ${task.summary ? `<div style="margin-bottom: 8px;"><strong>AI Summary:</strong> ${task.summary}</div>` : ''}
-                            </div>
-                            
-                            <h3 style="margin-bottom: 10px; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">Message Content:</h3>
-                            <div style="
-                                background: #fafafa;
-                                border: 1px solid #ddd;
-                                padding: 25px;
-                                border-radius: 6px;
-                                white-space: pre-wrap;
-                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                                font-size: 14px;
-                                line-height: 1.6;
-                                color: #2c3e50;
-                            ">${cleanContent || 'No content available'}</div>
-                            
-                            <div style="margin-top: 25px; display: flex; gap: 10px; padding-top: 20px; border-top: 1px solid #ddd;">
-                                <button onclick="markAsDone('${taskId}'); this.closest('div[style*=fixed]').remove();" style="
-                                    background: #27ae60;
-                                    color: white;
-                                    border: none;
-                                    padding: 12px 25px;
-                                    border-radius: 6px;
-                                    cursor: pointer;
-                                    font-size: 14px;
-                                    font-weight: 600;
-                                    flex: 1;
-                                ">✓ Mark as Reviewed</button>
-                                <button onclick="archiveReview('${taskId}'); this.closest('div[style*=fixed]').remove();" style="
-                                    background: #95a5a6;
-                                    color: white;
-                                    border: none;
-                                    padding: 12px 25px;
-                                    border-radius: 6px;
-                                    cursor: pointer;
-                                    font-size: 14px;
-                                    font-weight: 600;
-                                    flex: 1;
-                                ">Archive</button>
-                            </div>
-                        </div>
-                    `;
-                    
-                    document.body.appendChild(modal);
-                }
-            } catch (err) {
-                console.error('Error loading review item:', err);
-                alert('Error loading content: ' + err.message);
-            }
-        }
+    } catch(e) {
+        toast('Connection error', 'error');
+    } finally {
+        btn.innerHTML = '▸ Analyze & Create Task';
+        btn.disabled = false;
+    }
+}
 
-        async function loadActivity() {
-            try {
-                const res = await fetch(`${API}/api/activity`);
-                const activities = await res.json();
-                
-                const container = document.getElementById('activity-list');
-                
-                if (activities.length === 0) {
-                    container.innerHTML = '<div class="loading">No recent activity</div>';
-                    return;
-                }
-                
-                container.innerHTML = activities.map(act => `
-                    <div class="activity-item">
-                        <span class="time">${act.time}</span>
-                        <strong>${act.action}</strong>: ${act.result}
-                    </div>
-                `).join('');
-            } catch (err) {
-                console.error('Activity error:', err);
-            }
-        }
+async function approveTask(id) {
+    const item = document.getElementById('task-' + id);
+    if (item) item.style.opacity = '0.5';
+    
+    try {
+        const res = await fetch(`${API}/api/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: id })
+        });
+        const result = await res.json();
         
-        async function createTask() {
-            const text = document.getElementById('task-input').value;
-            
-            if (!text.trim()) {
-                alert('Please enter a message');
-                return;
-            }
-            
-            // Show loading state
-            const createButton = event.target;
-            const originalText = createButton.textContent;
-            createButton.textContent = '⏳ Analyzing...';
-            createButton.disabled = true;
-            
-            try {
-                const res = await fetch(`${API}/api/create-task`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
-                });
-                
-                const result = await res.json();
-                
-                if (result.success) {
-                    document.getElementById('analysis-output').textContent = JSON.stringify(result, null, 2);
-                    document.getElementById('analysis-result').style.display = 'block';
-                    document.getElementById('task-input').value = '';
-                    
-                    // Reload tasks
-                    loadPendingTasks();
-                    loadStatus();
-                    
-                    alert('✓ Task created successfully!');
-                } else {
-                    // Show friendly error message
-                    if (result.retry_after) {
-                        alert(`⏱️ ${result.error}\n\nPlease wait ${result.retry_after} seconds and try again.`);
-                    } else {
-                        alert('Error: ' + (result.error || 'Unknown error'));
-                    }
-                }
-            } catch (err) {
-                alert('Error: ' + err.message);
-            } finally {
-                // Restore button
-                createButton.textContent = originalText;
-                createButton.disabled = false;
-            }
+        if (result.success) {
+            if (item) item.remove();
+            toast(result.message || 'Task approved', 'success');
+            loadStatus();
+        } else {
+            if (item) item.style.opacity = '1';
+            toast(result.error || 'Approval failed', 'error');
         }
-        
-        async function approveTask(taskId) {
-            if (!confirm('Approve this task?')) return;
+    } catch(e) {
+        if (item) item.style.opacity = '1';
+        toast('Connection error', 'error');
+    }
+}
 
-            try {
-                const res = await fetch(`${API}/api/approve`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ task_id: taskId })
-                });
-
-                const result = await res.json();
-                console.log('Approve result:', result);
-
-                if (result.success) {
-                    loadPendingTasks();
-                    loadStatus();
-                    alert('Task approved!\n\n' + result.message);
-                } else {
-                    // Show detailed error
-                    const errorMsg = result.error || result.message || 'Unknown error';
-                    alert('Approval failed:\n\n' + errorMsg);
-                }
-            } catch (err) {
-                console.error('Approve error:', err);
-                alert('Approval error: ' + err.message);
-            }
-        }
-
-        async function rejectTask(taskId) {
-            const reason = prompt('Reason for rejection (optional):');
-            if (reason === null) return;
-            
-            try {
-                const res = await fetch(`${API}/api/reject`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ task_id: taskId, reason: reason || 'No reason provided' })
-                });
-                
-                const result = await res.json();
-                
-                if (result.success) {
-                    loadPendingTasks();
-                    loadStatus();
-                    alert('Task rejected');
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
-        }
+async function rejectTask(id) {
+    const reason = prompt('Reason for rejection (optional):');
+    if (reason === null) return;
+    
+    try {
+        const res = await fetch(`${API}/api/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: id, reason: reason || 'No reason' })
+        });
+        const result = await res.json();
         
-        async function processDropFolder() {
-            try {
-                const res = await fetch(`${API}/api/process-drop-folder`, {
-                    method: 'POST'
-                });
-                
-                const result = await res.json();
-                
-                if (result.success) {
-                    alert('Drop folder processed! Check Needs_Action folder.');
-                    loadPendingTasks();
-                    loadStatus();
-                } else {
-                    alert('Error: ' + (result.error || 'Unknown error'));
-                }
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
+        if (result.success) {
+            document.getElementById('task-' + id)?.remove();
+            toast('Task rejected', 'info');
+            loadStatus();
+        } else {
+            toast(result.error || 'Failed', 'error');
         }
-        
-        async function markAsDone(taskId) {
-            if (!confirm('Mark this item as reviewed and done?')) return;
-            
-            // For now, just move to Done folder
-            try {
-                const res = await fetch(`${API}/api/mark-done`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ task_id: taskId })
-                });
-                
-                const result = await res.json();
-                
-                if (result.success) {
-                    alert('Marked as done!');
-                    loadToReview();
-                } else {
-                    alert('Error: ' + (result.error || 'Unknown error'));
-                }
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
-        }
-        
-        async function archiveReview(taskId) {
-            if (!confirm('Archive this item?')) return;
-            
-            try {
-                const res = await fetch(`${API}/api/archive-review`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ task_id: taskId })
-                });
-                
-                const result = await res.json();
-                
-                if (result.success) {
-                    alert('Archived!');
-                    loadToReview();
-                } else {
-                    alert('Error: ' + (result.error || 'Unknown error'));
-                }
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
-        }
-    </script>
+    } catch(e) { toast('Connection error', 'error'); }
+}
+
+async function markDone(id) {
+    const res = await fetch(`${API}/api/mark-done`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: id })
+    });
+    const r = await res.json();
+    if (r.success) { loadReviewTasks(); toast('Marked as done', 'success'); }
+}
+
+async function archiveReview(id) {
+    const res = await fetch(`${API}/api/archive-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: id })
+    });
+    const r = await res.json();
+    if (r.success) { loadReviewTasks(); toast('Archived', 'info'); }
+}
+
+async function toggleWatcher(name) {
+    const running = watcherStates[name] === 'running';
+    const endpoint = running ? `/api/watchers/${name}/stop` : `/api/watchers/${name}/start`;
+    
+    try {
+        const res = await fetch(`${API}${endpoint}`, { method: 'POST' });
+        const result = await res.json();
+        toast(result.message || result.error, result.success ? 'success' : 'error');
+        setTimeout(loadWatcherStatus, 1000);
+        setTimeout(loadStatus, 1500);
+    } catch(e) { toast('Connection error', 'error'); }
+}
+
+async function processDropFolder() {
+    toast('Processing drop folder...', 'info');
+    const res = await fetch(`${API}/api/process-drop-folder`, { method: 'POST' });
+    const r = await res.json();
+    toast(r.success ? 'Drop folder processed' : (r.error || 'Failed'), r.success ? 'success' : 'error');
+    if (r.success) { loadStatus(); loadPendingTasks(); }
+}
+
+function fillExample(text) {
+    document.getElementById('task-input').value = text;
+    document.getElementById('task-input').focus();
+}
+
+// ─── TOAST ────────────────────────────────────────────────────
+
+function toast(msg, type = 'info') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    const icons = { success: '✓', error: '✕', info: 'ℹ' };
+    el.innerHTML = `<span>${icons[type]||'ℹ'}</span><span>${msg}</span>`;
+    document.getElementById('toasts').appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
 </body>
 </html>

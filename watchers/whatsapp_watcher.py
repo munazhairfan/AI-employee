@@ -1,3 +1,8 @@
+"""
+WhatsApp Watcher - IMPROVED UNREAD DETECTION
+Fixed to properly detect and read unread messages
+"""
+
 import sys
 import time
 import logging
@@ -18,21 +23,20 @@ class WhatsAppWatcher(BaseWatcher):
     def __init__(self, vault_path: str = 'AI_Employee_Vault', session_path: str = 'whatsapp_session', check_interval: int = 30):
         super().__init__(vault_path, check_interval)
         self.session_path = Path(session_path)
-        self.keywords = ['urgent', 'asap', 'invoice', 'payment', 'help']
         self._processed_messages = set()
         self._load_processed_messages()
 
     def _load_processed_messages(self):
         """Load already processed message hashes from cache file."""
-        cache_file = self.vault_path / '.processed_whatsapp.txt'
+        cache_file = Path('data/AI_Employee_Vault') / '.processed_whatsapp.txt'
         if cache_file.exists():
-            with open(cache_file, 'r') as f:
+            with open(cache_file, 'r',encoding='utf-8') as f:
                 self._processed_messages = set(line.strip() for line in f if line.strip())
 
     def _save_processed_message(self, msg_hash: str):
         """Save processed message hash to cache file."""
-        cache_file = self.vault_path / '.processed_whatsapp.txt'
-        with open(cache_file, 'a') as f:
+        cache_file = Path('data/AI_Employee_Vault') / '.processed_whatsapp.txt'
+        with open(cache_file, 'a',encoding='utf-8') as f:
             f.write(f"{msg_hash}\n")
         self._processed_messages.add(msg_hash)
 
@@ -41,290 +45,355 @@ class WhatsAppWatcher(BaseWatcher):
         return f"{chat}:{text[:50]}"
 
     def check_for_updates(self) -> list:
-        """Check WhatsApp Web for unread messages with important keywords."""
+        """Check WhatsApp Web for ALL unread messages."""
         unread_messages = []
-        
+
         try:
             with sync_playwright() as p:
-                # Launch browser with persistent session (non-headless for reliability)
+                # Launch browser with persistent session
                 browser = p.chromium.launch_persistent_context(
                     user_data_dir=str(self.session_path),
-                    headless=False,  # Use visible browser for reliability
-                    args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--window-size=1920,1080']
+                    headless=False,
+                    args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'],
+                    timeout=60000
                 )
-                
-                # Check if already logged in
+
                 page = browser.pages[0] if browser.pages else browser.new_page()
-                
+
                 try:
-                    page.goto('https://web.whatsapp.com', wait_until='networkidle', timeout=30000)
+                    # Navigate to WhatsApp
+                    self.logger.info("Opening WhatsApp Web...")
+                    page.goto('https://web.whatsapp.com', wait_until='domcontentloaded', timeout=60000)
                     
-                    # Wait for chat list to load
-                    page.wait_for_selector('div[role="row"]', timeout=10000)
+                    # Wait longer for page to load
+                    self.logger.info("Waiting for page to load (30 seconds max)...")
+                    time.sleep(5)
                     
-                    # Give it a moment to fully load
-                    time.sleep(3)
+                    # Try multiple selectors to find chat list
+                    chat_rows = []
+                    selectors = [
+                        'div[role="row"]',
+                        'div[data-testid="chat"]',
+                        'div[class*="chat-list"] div[role="listitem"]',
+                        'div[class*="_ak4d"]'
+                    ]
                     
-                    # Find all chat rows with unread indicators
-                    chat_rows = page.query_selector_all('div[role="row"]')
-                    
-                    for row in chat_rows:
+                    for selector in selectors:
                         try:
-                            # Get chat name
-                            chat_name_elem = row.query_selector('span[title]')
-                            if not chat_name_elem:
-                                continue
-                            chat_name = chat_name_elem.get_attribute('title')
-                            
-                            # Get message text
-                            msg_elem = row.query_selector('span[dir="auto"]')
-                            if not msg_elem:
-                                continue
-                            msg_text = msg_elem.inner_text()
-                            
-                            # Check for unread indicator (green badge or similar)
-                            unread_badge = row.query_selector('span[aria-label*="unread"]')
-                            has_unread = unread_badge is not None
-                            
-                            # Also check for unread class
-                            if not has_unread:
-                                unread_class = row.query_selector('.akpnb')
-                                has_unread = unread_class is not None
-                            
-                            if has_unread and msg_text:
-                                # Check if message contains important keywords
-                                msg_lower = msg_text.lower()
-                                if any(kw in msg_lower for kw in self.keywords):
-                                    unread_messages.append({
-                                        'text': msg_text,
-                                        'chat': chat_name,
-                                        'timestamp': datetime.now().isoformat()
-                                    })
-                                    
-                        except Exception as e:
-                            self.logger.debug(f"Error parsing chat row: {e}")
+                            page.wait_for_selector(selector, timeout=5000)
+                            chat_rows = page.query_selector_all(selector)
+                            if chat_rows:
+                                self.logger.info(f"Found chat list using: {selector}")
+                                break
+                        except:
                             continue
-                            
+                    
+                    if not chat_rows:
+                        self.logger.error("Could not find chat list - page may not be loaded")
+                        self.logger.info("Please check if you're logged in to WhatsApp Web")
+                        time.sleep(10)  # Give time to inspect
+                        return []
+                    
+                    # Get unread messages
+                    unread_messages = self._check_messages_in_page(page, chat_rows)
+
                 except Exception as e:
                     self.logger.error(f"Error accessing WhatsApp Web: {e}")
-                    self.logger.info("Make sure you have scanned QR code previously")
-                
+                    self.logger.info("If QR code shows, please scan it")
+                    time.sleep(10)
+
                 finally:
                     browser.close()
-                    
+
         except Exception as e:
             self.logger.error(f"Error in WhatsApp watcher: {e}")
-        
+
+        return unread_messages
+
+    def _check_messages_in_page(self, page, chat_rows) -> list:
+        """Check for unread messages - look for GREEN UNREAD COUNT BADGE"""
+        unread_messages = []
+
+        try:
+            # Wait for chat list
+            page.wait_for_selector('div[role="row"]', timeout=5000)
+            time.sleep(2)
+
+            # Find all chat rows
+            chat_rows = page.query_selector_all('div[role="row"]')
+            self.logger.info(f"Found {len(chat_rows)} chat rows")
+
+            for idx, row in enumerate(chat_rows):
+                try:
+                    # Get chat name from the span with title
+                    chat_name_elem = row.query_selector('span[title]')
+                    if not chat_name_elem:
+                        continue
+                    chat_name = chat_name_elem.get_attribute('title')
+                    if not chat_name:
+                        continue
+
+                    # Check if it's a group (has ~ prefix before the message)
+                    # In your HTML: <span>~ zohaibsamia64</span> means it's a group
+                    is_group = False
+                    preview_div = row.query_selector('div._ak8k')  # This div contains the message preview
+                    if preview_div:
+                        preview_html = preview_div.inner_text()
+                        # Groups show "~ username" before the message
+                        if preview_html.strip().startswith('~'):
+                            is_group = True
+                            self.logger.info(f"Skipping group: {chat_name}")
+                    
+                    # Skip groups - only process single chats
+                    if is_group:
+                        continue
+
+                    # Get the ACTUAL message text from the correct location
+                    # In your HTML, the message is in: div._ak8k > span[dir="ltr"]
+                    msg_elem = None
+                    if preview_div:
+                        # Look for the span with the actual message (dir="ltr")
+                        msg_elem = preview_div.query_selector('span[dir="ltr"]')
+                    
+                    if msg_elem:
+                        msg_text = msg_elem.inner_text().strip()
+                    else:
+                        # Fallback: get all text from preview div and clean it
+                        if preview_div:
+                            full_text = preview_div.inner_text()
+                            # Remove the "~ username" part if present
+                            if full_text.startswith('~'):
+                                # Find the ": " separator and get text after it
+                                parts = full_text.split(': ', 1)
+                                if len(parts) > 1:
+                                    msg_text = parts[1].strip()
+                                else:
+                                    msg_text = ""
+                            else:
+                                msg_text = full_text.strip()
+                        else:
+                            msg_text = ""
+                    
+                    if not msg_text or len(msg_text) < 2:
+                        continue
+
+                    self.logger.info(f"Chat {idx}: {chat_name} - '{msg_text[:50]}...'")
+
+                    # Look for unread badge - WhatsApp uses aria-label="X unread messages"
+                    has_unread = False
+                    
+                    # Check for aria-label containing "unread messages" or "unread message"
+                    unread_badge = row.query_selector('[aria-label*="unread messages"], [aria-label*="unread message"]')
+                    if unread_badge:
+                        has_unread = True
+                        aria_text = unread_badge.get_attribute('aria-label')
+                        self.logger.info(f"Found unread badge: {aria_text}")
+                    
+                    # Also check for the green badge with numbers (999+, 99+, etc.)
+                    if not has_unread:
+                        all_spans = row.query_selector_all('span')
+                        for span in all_spans:
+                            span_text = span.inner_text().strip()
+                            if span_text and (span_text.isdigit() or span_text == '999+' or span_text == '99+'):
+                                has_unread = True
+                                self.logger.info(f"Found unread count: {span_text}")
+                                break
+
+                    if has_unread:
+                        self.logger.info(f"✓ UNREAD from {chat_name}: {msg_text[:50]}...")
+                        phone = None
+                        try:
+                            data_id = row.get_attribute('data-id') or ''
+                            # data-id format is usually: "923001234567@c.us"
+                            if '@c.us' in data_id:
+                                phone = data_id.split('@')[0]
+                        except:
+                            pass
+                        unread_messages.append({
+                            'text': msg_text,
+                            'chat': chat_name,
+                            'phone': phone,
+                            'timestamp': datetime.now().isoformat()
+                        })
+                    else:
+                        self.logger.debug(f"Read: {chat_name}")
+
+                except Exception as e:
+                    self.logger.debug(f"Error parsing row {idx}: {e}")
+                    continue
+
+        except Exception as e:
+            self.logger.error(f"Error checking messages: {e}")
+
         return unread_messages
 
     def create_action_file(self, item: dict) -> Path:
-        """Create WHATSAPP_{timestamp}.md file in Needs_Action folder."""
+        """Create whatsapp_{timestamp}.md file in data/watcher_output/ folder."""
         msg_hash = self._hash_message(item['text'], item['chat'])
-        
+
         self.logger.info(f"Checking if message already processed... (hash: {msg_hash})")
-        
+
         # Skip if already processed
         if msg_hash in self._processed_messages:
             self.logger.warning(f"Message already processed, skipping: {item['chat']}")
             return None
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        action_file = self.needs_action / f"WHATSAPP_{timestamp}.md"
-        
+        # Save to watcher_output folder (where processor looks)
+        watcher_output = Path('data/watcher_output')
+        watcher_output.mkdir(parents=True, exist_ok=True)
+        action_file = watcher_output / f"whatsapp_{timestamp}.md"
+
         self.logger.info(f"Creating action file: {action_file}")
-        
+
         content = f"""---
-type: whatsapp
+source: whatsapp_watcher
 from: {item['chat']}
+phone: {item.get('phone', '')}
 received: {item['timestamp']}
-priority: high
-status: pending
+subject: WhatsApp message from {item['chat']}
 ---
 
-## WhatsApp Message
+## Message
 
 **From:** {item['chat']}
 
-**Message:**
+**Content:**
 {item['text']}
-
-## Suggested Actions
-
-- [ ] Read and understand the message
-- [ ] Reply on WhatsApp if needed
-- [ ] Take action if urgent/request
-- [ ] Archive or mark as read after processing
-
 """
-        
-        with open(action_file, 'w', encoding='utf-8') as f:
-            f.write(content)
-        
+
+        action_file.write_text(content, encoding='utf-8')
         self.logger.info(f"SUCCESS: Created action file: {action_file.name}")
-        
+
         # Mark as processed
         self._save_processed_message(msg_hash)
-        
+
         return action_file
 
     def run(self):
-        """Run WhatsApp watcher with persistent browser session and auto-reconnect."""
+        """Run WhatsApp watcher with PERSISTENT browser - no reopening"""
         self.logger.info("Starting WhatsApp watcher with persistent browser...")
-        
-        while True:  # Auto-restart loop
-            try:
-                with sync_playwright() as p:
-                    # Launch browser ONCE and keep it open
-                    browser = p.chromium.launch_persistent_context(
-                        user_data_dir=str(self.session_path),
-                        headless=False,
-                        args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--window-size=1920,1080']
-                    )
-                    
-                    page = browser.pages[0] if browser.pages else browser.new_page()
-                    
-                    # Navigate to WhatsApp Web once
-                    self.logger.info("Loading WhatsApp Web...")
-                    page.goto('https://web.whatsapp.com', wait_until='networkidle', timeout=30000)
-                    
-                    try:
-                        page.wait_for_selector('div[role="row"]', timeout=10000)
-                        self.logger.info("WhatsApp Web loaded - monitoring for messages...")
-                    except Exception:
-                        self.logger.error("Could not load chat list. Please check if you're logged in.")
-                        self.logger.info("If not logged in, scan QR code in the browser window")
-                        # Wait for user to scan QR
-                        try:
-                            page.wait_for_selector('div[role="row"]', timeout=120000)
-                            self.logger.info("Login detected - starting monitoring...")
-                        except Exception as e:
-                            self.logger.error(f"QR code scan timeout: {e}")
-                            browser.close()
-                            continue  # Restart the watcher
-                    
-                    # Keep checking for messages without reopening browser
-                    check_count = 0
-                    while True:
-                        try:
-                            check_count += 1
-                            self.logger.info(f"Checking for messages... (check #{check_count})")
-                            
-                            # Navigate to main page to refresh
-                            page.goto('https://web.whatsapp.com', wait_until='networkidle', timeout=15000)
-                            time.sleep(3)  # Wait for content to load
-                            
-                            # Check for messages
-                            items = self._check_messages_in_page(page)
-                            
-                            if items:
-                                self.logger.info(f"Found {len(items)} new message(s) with keywords!")
-                                for item in items:
-                                    self.create_action_file(item)
-                            else:
-                                self.logger.info("No new messages with keywords")
-                                
-                        except Exception as e:
-                            self.logger.error(f"Error checking messages: {e}")
-                            # Try to recover by refreshing
-                            try:
-                                page.reload()
-                                time.sleep(2)
-                            except:
-                                break  # Restart browser
-                        
-                        time.sleep(self.check_interval)
-                    
-            except Exception as e:
-                self.logger.error(f"Browser crashed: {e}")
-                self.logger.info("Restarting WhatsApp watcher in 5 seconds...")
-                time.sleep(5)  # Wait before restarting
 
-
-    def _check_messages_in_page(self, page) -> list:
-        """Check for unread messages using existing page (no browser restart)."""
-        unread_messages = []
-        
         try:
-            # Wait for chat list to be fully loaded
-            page.wait_for_selector('div[role="row"]', timeout=5000)
-            time.sleep(1)
-            
-            # Find all chat rows - try multiple selectors for compatibility
-            chat_rows = page.query_selector_all('div[role="row"]')
-            
-            self.logger.debug(f"Found {len(chat_rows)} chat rows")
-            
-            for idx, row in enumerate(chat_rows):
-                try:
-                    # Get chat name - try multiple selectors
-                    chat_name_elem = row.query_selector('span[title]')
-                    if not chat_name_elem:
-                        chat_name_elem = row.query_selector('div[tabindex="0"] span')
-                    if not chat_name_elem:
-                        continue
-                    chat_name = chat_name_elem.get_attribute('title') or 'Unknown'
+            with sync_playwright() as p:
+                # Launch browser ONCE and keep it open
+                browser = p.chromium.launch_persistent_context(
+                    user_data_dir=str(self.session_path),
+                    headless=False,
+                    args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'],
+                    timeout=120000  # 2 minutes timeout for initial load
+                )
+
+                page = browser.pages[0] if browser.pages else browser.new_page()
+
+                # Initial load - wait longer for WhatsApp to load chats
+                self.logger.info("Opening WhatsApp Web for the first time...")
+                self.logger.info("If QR code shows, please scan it now")
+                page.goto('https://web.whatsapp.com', wait_until='domcontentloaded', timeout=120000)
+                
+                # Wait for chat list with MUCH longer timeout
+                self.logger.info("Waiting for chat list to load (up to 2 minutes)...")
+                self.logger.info("WhatsApp may take time to load all chats")
+                time.sleep(15)  # Initial wait
+                
+                # Try to find chat list - wait up to 2 minutes
+                chat_rows = []
+                selectors = [
+                    'div[role="row"]',
+                    'div[data-testid="chat"]',
+                    'div[class*="_ak4d"]'
+                ]
+                
+                # Try for 2 minutes (24 attempts x 5 seconds)
+                for attempt in range(24):
+                    for selector in selectors:
+                        try:
+                            chat_rows = page.query_selector_all(selector)
+                            if chat_rows and len(chat_rows) > 0:
+                                self.logger.info(f"✓ Found {len(chat_rows)} chats using: {selector}")
+                                break
+                        except Exception as e:
+                            self.logger.debug(f"Selector {selector} failed: {e}")
                     
-                    # Get message text - try multiple selectors
-                    msg_elem = row.query_selector('span[dir="auto"]')
-                    if not msg_elem:
-                        msg_elem = row.query_selector('span:last-child')
-                    if not msg_elem:
-                        continue
-                    msg_text = msg_elem.inner_text()
+                    if chat_rows and len(chat_rows) > 0:
+                        break
                     
-                    self.logger.debug(f"Chat {idx}: {chat_name} - '{msg_text[:50]}...'")
-                    
-                    # Check for unread indicator - multiple methods
-                    has_unread = False
-                    
-                    # Method 1: Unread badge
-                    unread_badge = row.query_selector('span[aria-label*="unread"]')
-                    if unread_badge:
-                        has_unread = True
-                    
-                    # Method 2: Unread class (green dot)
-                    if not has_unread:
-                        unread_class = row.query_selector('.akpnb, .x1lliihq, [class*="unread"]')
-                        if unread_class:
-                            has_unread = True
-                    
-                    # Method 3: Check for bold text (unread messages are bold)
-                    if not has_unread:
-                        bold_text = row.query_selector('span[style*="font-weight: bold"], span[style*="font-weight:700"]')
-                        if bold_text:
-                            has_unread = True
-                    
-                    if has_unread and msg_text:
-                        self.logger.info(f"UNREAD from {chat_name}: {msg_text[:50]}...")
-                        
-                        # Check if message contains important keywords
-                        msg_lower = msg_text.lower()
-                        if any(kw in msg_lower for kw in self.keywords):
-                            self.logger.info(f"KEYWORD MATCH in message from {chat_name}!")
-                            unread_messages.append({
-                                'text': msg_text,
-                                'chat': chat_name,
-                                'timestamp': datetime.now().isoformat()
-                            })
+                    if (attempt + 1) % 6 == 0:  # Every 30 seconds
+                        self.logger.info(f"Still loading chats... ({attempt+1}/24 attempts)")
+                        self.logger.info("Keep browser open - don't close it")
+                    time.sleep(5)
+                
+                if not chat_rows or len(chat_rows) == 0:
+                    self.logger.error("Could not find chat list after 2 minutes")
+                    self.logger.info("Please check:")
+                    self.logger.info("  1. Are you logged in to WhatsApp Web?")
+                    self.logger.info("  2. Do you see chats in the browser?")
+                    self.logger.info("  3. Is your internet connection working?")
+                    self.logger.info("Keeping browser open for 5 minutes for manual inspection...")
+                    time.sleep(300)  # Keep open 5 minutes for inspection
+                    browser.close()
+                    return
+
+                self.logger.info(f"✓ Chat list loaded successfully with {len(chat_rows)} chats")
+                
+                # Now keep checking without reopening browser
+                check_count = 0
+                while True:
+                    try:
+                        check_count += 1
+                        self.logger.info(f"\nChecking for messages... (check #{check_count})")
+
+                        # Don't navigate - just work with the current page
+                        # The page is already loaded, just need to check for updates
+                        time.sleep(2)  # Small wait for any updates to render
+
+                        # Try to get fresh chat rows from current page
+                        try:
+                            fresh_chat_rows = page.query_selector_all('div[role="row"]')
+                            if fresh_chat_rows and len(fresh_chat_rows) > 0:
+                                chat_rows = fresh_chat_rows
+                                self.logger.debug(f"Updated chat rows: {len(chat_rows)}")
+                        except Exception as nav_err:
+                            self.logger.debug(f"Could not refresh chat rows: {nav_err}")
+                            # Continue with existing chat_rows
+
+                        # Get unread messages
+                        items = self._check_messages_in_page(page, chat_rows)
+
+                        if items:
+                            self.logger.info(f"✓ Found {len(items)} unread message(s)!")
+                            for item in items:
+                                self.create_action_file(item)
                         else:
-                            self.logger.debug(f"No keyword match in message from {chat_name}")
-                            
-                except Exception as e:
-                    self.logger.debug(f"Error parsing chat row {idx}: {e}")
-                    continue
-                    
+                            self.logger.info("No unread messages")
+
+                        # Wait before next check
+                        self.logger.info(f"Waiting {self.check_interval} seconds...")
+                        time.sleep(self.check_interval)
+
+                    except KeyboardInterrupt:
+                        self.logger.info("\nStopping watcher...")
+                        break
+                    except Exception as e:
+                        self.logger.error(f"Error in check loop: {e}")
+                        time.sleep(10)
+
+                browser.close()
+
         except Exception as e:
-            self.logger.error(f"Error checking for updates: {e}")
-        
-        return unread_messages
+            self.logger.error(f"Error in WhatsApp watcher: {e}")
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(open(sys.stdout.fileno(), mode='w', encoding='utf-8', closefd=False))
+    ])
+
     # Check if session exists
     session_dir = Path('whatsapp_session')
-    
+
     if not session_dir.exists():
         # First-time setup
         print("=" * 60)
@@ -342,25 +411,25 @@ if __name__ == "__main__":
         with sync_playwright() as p:
             browser = p.chromium.launch_persistent_context(
                 user_data_dir=str(session_dir),
-                headless=False,  # Show browser for QR scan
+                headless=False,
                 args=['--disable-gpu', '--no-sandbox']
             )
-            
+
             page = browser.pages[0] if browser.pages else browser.new_page()
             page.goto('https://web.whatsapp.com', wait_until='networkidle')
-            
+
             print("\nScan the QR code with WhatsApp on your phone...")
             print("Waiting for login (60 seconds max)...")
-            
+
             try:
                 page.wait_for_selector('div[role="row"]', timeout=60000)
-                print("\nLogin successful! Session saved.")
+                print("\nLogin detected - starting monitoring...")
                 time.sleep(3)
             except Exception:
                 print("\nLogin timeout. Please run again and scan QR code.")
-            
+
             browser.close()
-        
+
         print("\n" + "=" * 60)
         print("SETUP COMPLETE")
         print("=" * 60)
@@ -375,6 +444,6 @@ if __name__ == "__main__":
         print("Checking WhatsApp every 30 seconds")
         print("Press Ctrl+C to stop")
         print("=" * 60)
-        
+
         watcher = WhatsAppWatcher()
         watcher.run()

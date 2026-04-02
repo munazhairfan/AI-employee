@@ -2,3 +2,20 @@ if browser is opening user should be informed that the task is being performed
 if number not found user should know
 if the request doesn't have enough details why is it even allowed to execute
 sending message by number not by name
+
+
+
+
+the watcher should extract the numbers too, if possible or either
+the messages should be sent by both number and name, because the ai
+adds a task by name for a reply
+
+and the drop folder should be solved
+
+idoo should be authenticated automatically
+[DEBUG] Execute result: {'success': False, 'error': 'Odoo error: Authentication failed: Odoo Server Error', 'details': {'success': False, 'error': 'Authentication failed: Odoo Server Error', 'invoice_id': None}}
+
+the old message before reply if possible so that the user can check
+to what we are replying
+
+analyxing the intents and context of message is still off

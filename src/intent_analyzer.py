@@ -26,7 +26,7 @@ from ai_agent import ai_reasoning, get_model_info
 
 # Configuration
 DROP_FOLDER = Path('drop_folder')
-NEEDS_ACTION = Path('AI_Employee_Vault/Needs_Action')
+NEEDS_ACTION = Path('data/AI_Employee_Vault/Needs_Action')
 
 # Intent categories
 INTENT_TYPES = {
@@ -113,6 +113,7 @@ TASK:
    - order_number: Order # if mentioned
    - product_service: What product/service
    - message_content: The actual message/reply to send (for whatsapp_reply, email_send)
+   - post_content: The LinkedIn/Facebook post text (for linkedin_post, facebook_post)
 
 IMPORTANT RULES:
 - invoice_number is OPTIONAL - if not mentioned by customer, do NOT mark as missing (Odoo will auto-generate)
@@ -219,7 +220,7 @@ NOW ANALYZE THIS:
 """
     
     # Call AI
-    result = ai_reasoning(prompt, task_type="intent_analysis")
+    result = ai_reasoning(prompt, task_type="general")
     
     if result is None:
         return {
