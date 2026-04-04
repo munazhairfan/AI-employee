@@ -19,3 +19,13 @@ the old message before reply if possible so that the user can check
 to what we are replying
 
 analyxing the intents and context of message is still off
+
+
+
+there should be an notification soon after clicking approve
+not working skeleton removal
+the task is not removed after approve if not refreshed
+terminal stucks
+no prevention of dual calls 
+
+what is the purpose of file system watcher?

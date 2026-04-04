@@ -62,14 +62,12 @@ class WhatsAppWatcher(BaseWatcher):
         Extract phone number - only reliable methods.
         Phone is optional now since we send by name!
         """
-        import re
-        
         # METHOD 1: Contact Database (BEST - 100% reliable if contact exists)
         if chat_name in CONTACTS:
             phone = CONTACTS[chat_name]
             self.logger.info(f"✓ Database lookup: {chat_name} -> {phone}")
             return phone
-        
+
         # METHOD 2: Check if chat name IS a phone number (unsaved contacts)
         title_elem = row.query_selector('span[title]')
         if title_elem:
@@ -78,7 +76,7 @@ class WhatsAppWatcher(BaseWatcher):
             if len(digits_only) >= 10:
                 self.logger.info(f"✓ Phone from title: {chat_name} -> {digits_only}")
                 return digits_only
-        
+
         # That's it! Phone is optional - we send by name
         self.logger.debug(f"No phone extracted for: {chat_name} (will send by name)")
         return "NOT_EXTRACTED"
@@ -130,7 +128,7 @@ class WhatsAppWatcher(BaseWatcher):
                     if not chat_rows:
                         self.logger.error("Could not find chat list - page may not be loaded")
                         self.logger.info("Please check if you're logged in to WhatsApp Web")
-                        time.sleep(10)  # Give time to inspect
+                        time.sleep(10)
                         return []
 
                     # Get unread messages
@@ -150,7 +148,7 @@ class WhatsAppWatcher(BaseWatcher):
         return unread_messages
 
     def _check_messages_in_page(self, page, chat_rows) -> list:
-        """Check for unread messages - look for GREEN UNREAD COUNT BADGE"""
+        """Check for unread messages - only unread incoming messages from individuals."""
         unread_messages = []
 
         try:
@@ -172,87 +170,103 @@ class WhatsAppWatcher(BaseWatcher):
                     if not chat_name:
                         continue
 
-                    # Check if it's a group (has ~ prefix before the message)
-                    # In your HTML: <span>~ zohaibsamia64</span> means it's a group
+                    # -------------------------------------------------------
+                    # CHECK 1: Skip groups
+                    # Groups show a sender span with ~ prefix inside the preview
+                    # -------------------------------------------------------
                     is_group = False
-                    preview_div = row.query_selector('div._ak8k')  # This div contains the message preview
+                    preview_div = row.query_selector('div._ak8k')
                     if preview_div:
-                        preview_html = preview_div.inner_text()
-                        # Groups show "~ username" before the message
-                        if preview_html.strip().startswith('~'):
-                            is_group = True
-                            self.logger.info(f"Skipping group: {chat_name}")
+                        # Look for a sender name span (groups have one, DMs don't)
+                        sender_span = preview_div.query_selector('span[dir="auto"]')
+                        if sender_span:
+                            raw_sender = sender_span.inner_text().strip()
+                            if raw_sender.startswith('~'):
+                                is_group = True
+                                self.logger.info(f"Skipping group: {chat_name}")
 
-                    # Skip groups - only process single chats
                     if is_group:
                         continue
 
-                    # Get the ACTUAL message text from the correct location
-                    # In your HTML, the message is in: div._ak8k > span[dir="ltr"]
-                    msg_elem = None
-                    if preview_div:
-                        # Look for the span with the actual message (dir="ltr")
-                        msg_elem = preview_div.query_selector('span[dir="ltr"]')
+                    # -------------------------------------------------------
+                    # CHECK 2: Has unread badge?
+                    # ONLY trust aria-label — class names are obfuscated and
+                    # exist on every row, causing false positives.
+                    # -------------------------------------------------------
+                    has_unread = False
+                    all_elements = row.query_selector_all('[aria-label]')
+                    for elem in all_elements:
+                        label = (elem.get_attribute('aria-label') or '').lower()
+                        if 'unread message' in label:
+                            has_unread = True
+                            self.logger.info(f"✓ Unread badge found: '{label}' for {chat_name}")
+                            break
 
-                    if msg_elem:
-                        msg_text = msg_elem.inner_text().strip()
-                    else:
-                        # Fallback: get all text from preview div and clean it
-                        if preview_div:
+                    if not has_unread:
+                        self.logger.debug(f"Skipping (no unread badge): {chat_name}")
+                        continue
+
+                    # -------------------------------------------------------
+                    # CHECK 3: Is the last message outgoing?
+                    # WhatsApp marks your own sent previews with aria-label="You"
+                    # on the sender span. Also check for checkmark icons and
+                    # "You:" text prefix as fallbacks.
+                    # -------------------------------------------------------
+                    is_outgoing = False
+
+                    # Most reliable: WhatsApp labels your own sender span as "You"
+                    sender_elem = row.query_selector('span[aria-label="You"]')
+                    if sender_elem:
+                        is_outgoing = True
+                        self.logger.debug(f"Outgoing (aria-label=You): {chat_name}")
+
+                    # Fallback: checkmark icons present in the row
+                    if not is_outgoing:
+                        if row.query_selector('span[data-icon="msg-dblcheck"], span[data-icon="msg-check"]'):
+                            is_outgoing = True
+                            self.logger.debug(f"Outgoing (checkmark icon): {chat_name}")
+
+                    if is_outgoing:
+                        self.logger.info(f"⊘ Skipping outgoing message to: {chat_name}")
+                        continue
+
+                    # -------------------------------------------------------
+                    # Extract message text
+                    # -------------------------------------------------------
+                    msg_text = ""
+                    if preview_div:
+                        msg_elem = preview_div.query_selector('span[dir="ltr"]')
+                        if msg_elem:
+                            msg_text = msg_elem.inner_text().strip()
+                        else:
                             full_text = preview_div.inner_text()
-                            # Remove the "~ username" part if present
                             if full_text.startswith('~'):
-                                # Find the ": " separator and get text after it
                                 parts = full_text.split(': ', 1)
-                                if len(parts) > 1:
-                                    msg_text = parts[1].strip()
-                                else:
-                                    msg_text = ""
+                                msg_text = parts[1].strip() if len(parts) > 1 else ""
                             else:
                                 msg_text = full_text.strip()
-                        else:
-                            msg_text = ""
+
+                    # Fallback: "You:" text prefix in the message text itself
+                    if msg_text.lower().startswith('you:'):
+                        self.logger.info(f"⊘ Skipping outgoing (You: prefix): {chat_name}")
+                        continue
 
                     if not msg_text or len(msg_text) < 2:
                         continue
 
-                    self.logger.info(f"Chat {idx}: {chat_name} - '{msg_text[:50]}...'")
+                    # -------------------------------------------------------
+                    # All checks passed — this is an unread incoming message
+                    # -------------------------------------------------------
+                    self.logger.info(f"✓✓ UNREAD INCOMING from {chat_name}: {msg_text[:50]}...")
 
-                    # Look for unread badge - WhatsApp uses aria-label="X unread messages"
-                    has_unread = False
+                    phone = self._extract_phone_from_row(row, chat_name)
 
-                    # Check for aria-label containing "unread messages" or "unread message"
-                    unread_badge = row.query_selector('[aria-label*="unread messages"], [aria-label*="unread message"]')
-                    if unread_badge:
-                        has_unread = True
-                        aria_text = unread_badge.get_attribute('aria-label')
-                        self.logger.info(f"Found unread badge: {aria_text}")
-
-                    # Also check for the green badge with numbers (999+, 99+, etc.)
-                    if not has_unread:
-                        all_spans = row.query_selector_all('span')
-                        for span in all_spans:
-                            span_text = span.inner_text().strip()
-                            if span_text and (span_text.isdigit() or span_text == '999+' or span_text == '99+'):
-                                has_unread = True
-                                self.logger.info(f"Found unread count: {span_text}")
-                                break
-
-                    if has_unread:
-                        self.logger.info(f"✓ UNREAD from {chat_name}: {msg_text[:50]}...")
-
-                        # Extract phone number with multiple fallback methods
-                        # Methods 1-3 only (non-invasive, no clicking)
-                        phone = self._extract_phone_from_row(row, chat_name)
-
-                        unread_messages.append({
-                            'text': msg_text,
-                            'chat': chat_name,
-                            'phone': phone,
-                            'timestamp': datetime.now().isoformat()
-                        })
-                    else:
-                        self.logger.debug(f"Read: {chat_name}")
+                    unread_messages.append({
+                        'text': msg_text,
+                        'chat': chat_name,
+                        'phone': phone,
+                        'timestamp': datetime.now().isoformat()
+                    })
 
                 except Exception as e:
                     self.logger.debug(f"Error parsing row {idx}: {e}")
@@ -367,7 +381,7 @@ subject: WhatsApp message from {item['chat']}
                     self.logger.info("  2. Do you see chats in the browser?")
                     self.logger.info("  3. Is your internet connection working?")
                     self.logger.info("Keeping browser open for 5 minutes for manual inspection...")
-                    time.sleep(300)  # Keep open 5 minutes for inspection
+                    time.sleep(300)
                     browser.close()
                     return
 
@@ -380,8 +394,6 @@ subject: WhatsApp message from {item['chat']}
                         check_count += 1
                         self.logger.info(f"\nChecking for messages... (check #{check_count})")
 
-                        # Don't navigate - just work with the current page
-                        # The page is already loaded, just need to check for updates
                         time.sleep(2)  # Small wait for any updates to render
 
                         # Try to get fresh chat rows from current page
@@ -392,7 +404,6 @@ subject: WhatsApp message from {item['chat']}
                                 self.logger.debug(f"Updated chat rows: {len(chat_rows)}")
                         except Exception as nav_err:
                             self.logger.debug(f"Could not refresh chat rows: {nav_err}")
-                            # Continue with existing chat_rows
 
                         # Get unread messages
                         items = self._check_messages_in_page(page, chat_rows)

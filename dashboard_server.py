@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 from datetime import datetime
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler
 import socketserver
 from urllib.parse import urlparse, parse_qs
 import subprocess
@@ -1624,7 +1624,10 @@ def run_server():
     print()
 
     # Start server
-    with socketserver.TCPServer(("", PORT), DashboardHandler) as httpd:
+    class ThreadingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        daemon_threads = True
+    
+    with ThreadingServer(("", PORT), DashboardHandler) as httpd:
         print("=" * 60)
         print("  AI Employee Vault - Dashboard Server")
         print("=" * 60)
