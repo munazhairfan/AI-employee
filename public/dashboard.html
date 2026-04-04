@@ -599,6 +599,28 @@
             flex-shrink: 0;
         }
 
+        /* DROP ZONE STYLES */
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--surface2);
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(124, 106, 255, 0.05);
+        }
+
+        .drop-icon { font-size: 48px; margin-bottom: 16px; }
+        .drop-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+        .drop-subtitle { font-size: 12px; color: var(--muted); }
+        .hidden { display: none; }
+        .drop-status { margin-top: 16px; text-align: center; font-size: 13px; color: var(--accent2); }
+
         /* ANIMATIONS */
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(12px); }
@@ -822,6 +844,9 @@
         <div class="nav-item" onclick="showSection('watchers')">
             <span class="nav-icon">◐</span> Watchers
         </div>
+        <div class="nav-item" onclick="showSection('drop')">
+            <span class="nav-icon">◍</span> Drop Files
+        </div>
         <div class="nav-item" onclick="showSection('command')">
             <span class="nav-icon">▸</span> Command
         </div>
@@ -987,6 +1012,28 @@
         </div>
     </section>
 
+    <!-- DROP FILES SECTION -->
+    <section id="section-drop" style="display:none">
+        <div class="page-header">
+            <div>
+                <div class="page-title">Drop Files</div>
+                <div class="page-sub">Drop text files here to instantly create AI tasks</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-body">
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-icon">📄</div>
+                    <div class="drop-title">Drag & Drop files here</div>
+                    <div class="drop-subtitle">or click to browse</div>
+                    <input type="file" id="file-input" class="hidden" accept=".txt,.md,.text,.csv">
+                </div>
+                <div id="drop-status" class="drop-status"></div>
+            </div>
+        </div>
+    </section>
+
     <!-- COMMAND SECTION -->
     <section id="section-command" style="display:none">
         <div class="page-header">
@@ -1078,17 +1125,18 @@ let watcherStates = {};
 function showSection(name) {
     document.querySelectorAll('section[id^="section-"]').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    
+
     document.getElementById('section-' + name).style.display = 'block';
-    
+
     const navItems = document.querySelectorAll('.nav-item');
-    const idx = ['dashboard','tasks','review','watchers','command'].indexOf(name);
+    const idx = ['dashboard','tasks','review','watchers','drop','command'].indexOf(name);
     if (idx >= 0) navItems[idx].classList.add('active');
-    
+
     if (name === 'tasks') loadPendingTasks();
     if (name === 'review') loadReviewTasks();
     if (name === 'watchers') loadWatcherStatus();
     if (name === 'dashboard') refreshAll();
+    if (name === 'drop') initDropZone();
 }
 
 // ─── DATA LOADERS ─────────────────────────────────────────────
@@ -1158,6 +1206,8 @@ async function loadPendingTasks() {
 }
 
 function renderTaskItem(t, compact) {
+    const isGarbage = t.confidence == 0 || t.intent?.includes('AI failed');
+    
     return `<div class="task-item" id="task-${t.id}" style="cursor:pointer" onclick="viewTaskDetails('${t.id}')">
         <div class="task-meta">
             <span class="task-type">${t.type || 'unknown'}</span>
@@ -1166,9 +1216,10 @@ function renderTaskItem(t, compact) {
         ${t.intent ? `<div class="task-intent">→ ${t.intent}</div>` : ''}
         <div class="task-preview">${t.preview || 'No preview'}</div>
         <div class="task-actions" onclick="event.stopPropagation()">
-            <button class="btn btn-success btn-sm" onclick="approveTask('${t.id}')">✓ Approve</button>
+            <button class="btn btn-success btn-sm" onclick="approveTask('${t.id}')" ${isGarbage ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''}>✓ Approve</button>
             <button class="btn btn-danger btn-sm" onclick="rejectTask('${t.id}')">✕ Reject</button>
         </div>
+        ${isGarbage ? `<div style="font-size:10px;color:var(--danger);margin-top:6px;">⚠ AI analysis failed — reject this task</div>` : ''}
     </div>`;
 }
 
@@ -1278,8 +1329,12 @@ async function createTask() {
 
 async function approveTask(id) {
     const item = document.getElementById('task-' + id);
-    if (item) item.style.opacity = '0.5';
-    
+    if (item) {
+        item.style.opacity = '0.5';
+        // Immediate notification
+        toast('Processing task...', 'info');
+    }
+
     try {
         const res = await fetch(`${API}/api/approve`, {
             method: 'POST',
@@ -1287,7 +1342,7 @@ async function approveTask(id) {
             body: JSON.stringify({ task_id: id })
         });
         const result = await res.json();
-        
+
         if (result.success) {
             if (item) item.remove();
             toast(result.message || 'Task approved', 'success');
@@ -1588,6 +1643,65 @@ function toast(msg, type = 'info') {
     el.innerHTML = `<span>${icons[type]||'ℹ'}</span><span>${msg}</span>`;
     document.getElementById('toasts').appendChild(el);
     setTimeout(() => el.remove(), 4000);
+}
+
+// ─── DROP FILES HANDLER ─────────────────────────────────────
+
+function initDropZone() {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const statusEl = document.getElementById('drop-status');
+
+    if (!dropZone) return;
+
+    // Click to browse
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) handleFile(e.target.files[0]);
+    });
+
+    // Drag events
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+
+    dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length) handleFile(files[0]);
+    });
+
+    async function handleFile(file) {
+        statusEl.textContent = `Processing ${file.name}...`;
+        try {
+            const content = await file.text();
+            const res = await fetch(`${API}/api/upload-drop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: file.name, content: content })
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                statusEl.textContent = `✓ ${file.name} processed successfully!`;
+                toast('Task created from file!', 'success');
+                loadStatus();
+            } else {
+                statusEl.textContent = `✕ Failed: ${result.error}`;
+                toast(result.error || 'Failed to process file', 'error');
+            }
+        } catch (err) {
+            statusEl.textContent = `✕ Error: ${err.message}`;
+            toast('Upload failed', 'error');
+        }
+    }
 }
 
 // ─── INIT ─────────────────────────────────────────────────────

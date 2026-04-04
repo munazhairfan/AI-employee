@@ -190,8 +190,48 @@ def create_task_from_file(watcher_file):
     # Decide which folder based on AI's category decision
     category = ai_result.get('category', 'informational')
     can_auto = ai_result.get('can_auto_execute', False)
-    
+
     if category == 'actionable' and can_auto:
+        # VALIDATION: Verify critical data exists before creating task
+        entities = ai_result.get('entities', {})
+        primary_intent = ai_result.get('primary_intent', '')
+        missing_info = ai_result.get('missing_info', [])
+
+        # Filter out phone from missing info as we send by name
+        missing_info = [m for m in missing_info if 'phone' not in m.lower()]
+
+        # HELPER: Check if a value is actually useful
+        def is_valid(val):
+            return val is not None and str(val).lower() not in ['null', 'n/a', 'unknown', 'none', '']
+
+        # Check 1: If AI says info is missing, do NOT create actionable task
+        if missing_info:
+            print(f"[AI] ✗ Missing info — routing to To_Review instead")
+            category = 'informational'
+            can_auto = False
+            ai_result['category'] = 'informational'
+            ai_result['can_auto_execute'] = False
+            ai_result['one_line_summary'] = f"Incomplete task — missing: {', '.join(missing_info)}"
+
+        # Check 2: Specific validation for Invoices
+        if 'odoo_invoice' in primary_intent:
+            c_name = entities.get('customer_name') or entities.get('customer')
+            amt = entities.get('amount')
+
+            if not is_valid(c_name) or not is_valid(amt):
+                missing = []
+                if not is_valid(c_name): missing.append('customer_name')
+                if not is_valid(amt): missing.append('amount')
+                print(f"[AI] ✗ ERROR: Invoice task missing valid data for: {', '.join(missing)}. Skipping.")
+                return False
+        
+        # Check 3: WhatsApp Reply needs a target
+        if 'whatsapp_reply' in primary_intent:
+            target = entities.get('customer_name') or entities.get('phone')
+            if not is_valid(target):
+                print(f"[AI] ✗ ERROR: WhatsApp reply has no target name or phone. Skipping.")
+                return False
+
         # Actionable task - goes to Pending_Approval
         task_folder = Path('data/AI_Employee_Vault/Pending_Approval')
         task_folder.mkdir(parents=True, exist_ok=True)
@@ -251,7 +291,19 @@ requires_human_review: true
         
         # Add missing info (simplified, no checkboxes)
         missing = ai_result.get('missing_info', [])
+        
+        # Filter out 'customer_phone' since we send by name now
+        missing = [m for m in missing if 'phone' not in m.lower()]
+        
+        # CHECK FOR CRITICAL MISSING INFO
         if missing:
+            print(f"[AI] ✗ FAILED: Missing critical info: {', '.join(missing)}")
+            print(f"[AI] Skipping task creation for {watcher_file.name}")
+            # Move file to a 'failed' folder instead? Or just leave it?
+            # Let's leave it in watcher_output but log the error so you can fix it manually.
+            return False
+
+        if missing: # This block is now unreachable if missing is true, but keeping logic safe
             task_content += "\n## ⚠️ Missing Information\n\n"
             for item in missing:
                 task_content += f"- {item}\n"

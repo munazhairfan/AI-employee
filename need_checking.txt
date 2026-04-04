@@ -27,5 +27,7 @@ not working skeleton removal
 the task is not removed after approve if not refreshed
 terminal stucks
 no prevention of dual calls 
+drop folder
+if there is missing details the task shouldn't be created and a clean error is showed and even if it creates the error should show the reason of failing
 
 what is the purpose of file system watcher?

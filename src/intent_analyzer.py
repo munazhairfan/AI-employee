@@ -264,6 +264,13 @@ Output: {{
     "priority": "normal"
 }}
 
+SELF-VALIDATION RULES (check these before setting can_auto_execute: true):
+- odoo_invoice: You MUST have extracted BOTH customer_name AND amount with real values. If either is missing, set can_auto_execute: false and add them to missing_info.
+- email_send: You MUST have extracted a real email address. If missing, set can_auto_execute: false.
+- whatsapp_reply: You MUST have either a phone number or a customer name AND a specific message to send. If missing, set can_auto_execute: false.
+- When in doubt about any field → set can_auto_execute: false
+- NEVER set can_auto_execute: true if missing_info is not empty
+
 NOW ANALYZE THIS:
 {text}
 """

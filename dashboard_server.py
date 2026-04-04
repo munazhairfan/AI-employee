@@ -74,6 +74,10 @@ system_state = {
 # Background processes
 watchers = {}
 
+# Processing lock to prevent double-clicking on approval
+processing_tasks = set()
+processing_lock = threading.Lock()
+
 
 class DashboardHandler(SimpleHTTPRequestHandler):
     """HTTP handler for dashboard API"""
@@ -237,6 +241,30 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             # Process drop folder now
             result = process_drop_folder_now()
             self.send_json_response(result)
+
+        elif parsed.path == '/api/upload-drop':
+            # Handle direct file drop & auto-process
+            try:
+                drop_data = json.loads(body) if body else {}
+                filename = drop_data.get('filename', f'drop_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt')
+                content = drop_data.get('content', '')
+                
+                drop_folder = Path('data/drop_folder')
+                drop_folder.mkdir(parents=True, exist_ok=True)
+                filepath = drop_folder / filename
+                
+                filepath.write_text(content, encoding='utf-8')
+                
+                # Process immediately
+                from src.watcher_processor import create_task_from_file
+                success = create_task_from_file(filepath)
+                
+                self.send_json_response({
+                    'success': success,
+                    'message': 'Task created successfully!' if success else 'Failed to create task'
+                })
+            except Exception as e:
+                self.send_json_response({'success': False, 'error': str(e)})
 
         elif parsed.path == '/api/watchers/gmail/start':
             # Start Gmail watcher
@@ -601,6 +629,13 @@ def get_recent_activity():
 
 def approve_task(task_id):
     """Approve a pending task and EXECUTE the action"""
+    
+    # 1. Prevent double processing
+    with processing_lock:
+        if task_id in processing_tasks:
+            return {'success': False, 'error': 'Task is already being processed. Please wait.'}
+        processing_tasks.add(task_id)
+    
     try:
         # Find the file - check ALL possible folders
         folders_to_check = [
@@ -609,15 +644,15 @@ def approve_task(task_id):
             Path('data/AI_Employee_Vault/Needs_Action'),
             Path('data/AI_Employee_Vault/Pending_Approval')
         ]
-        
+
         task_file = None
         for folder in folders_to_check:
             potential_file = folder / f'{task_id}.md'
             if potential_file.exists():
                 task_file = potential_file
                 break
-        
-        if not task_file:
+
+        if not task_file or not task_file.exists():
             print(f"[ERROR] Task file not found: {task_id}")
             return {'success': False, 'error': 'Task not found'}
 
@@ -637,28 +672,56 @@ def approve_task(task_id):
         # EXECUTE the action
         print(f"[DEBUG] Executing task: {task_type}")
         action_result = execute_approved_task(task_type, content, task_file.name)
-
         print(f"[DEBUG] Execute result: {action_result}")
 
-        # Mark as approved
-        content = content.replace('[ ] Approve', '[x] Approve')
-        content = content.replace('[ ] Edit', '[x] Edit')
+        # CHECK EXECUTION RESULT
+        if not action_result.get('success'):
+            # If execution failed, return a clean error message
+            error_msg = action_result.get('error', 'Task execution failed with no details')
+            print(f"[ERROR] Execution failed: {error_msg}")
+            # Move to Failed folder so it clears from dashboard
+            try:
+                if task_file.exists():
+                    failed_path = Path('data/AI_Employee_Vault/Failed') / task_file.name
+                    failed_path.parent.mkdir(parents=True, exist_ok=True)
+                    task_file.rename(failed_path)
+                    log_activity('task_failed', f'{task_type}: {error_msg[:80]}')
+            except Exception as move_err:
+                print(f"[WARN] Could not move failed task: {move_err}")
+            return {'success': False, 'error': f'Execution Failed: {error_msg}'}
 
-        # Move to Done
-        done_path = Path('data/AI_Employee_Vault/Done') / task_file.name
-        done_path.parent.mkdir(parents=True, exist_ok=True)
-        task_file.rename(done_path)
+        # Mark as approved and move to Done (Safety wrapped)
+        try:
+            # Re-check if file still exists before modifying
+            if task_file.exists():
+                content = content.replace('[ ] Approve', '[x] Approve')
+                content = content.replace('[ ] Edit', '[x] Edit')
 
-        # Log
-        log_activity('task_approved', f'{task_type}: {task_file.name} - {action_result.get("message", "Success")}')
-
+                done_path = Path('data/AI_Employee_Vault/Done') / task_file.name
+                done_path.parent.mkdir(parents=True, exist_ok=True)
+                task_file.rename(done_path)
+                
+                # Log
+                log_activity('task_approved', f'{task_type}: {task_file.name} - {action_result.get("message", "Success")}')
+            else:
+                print(f"[WARN] Task file {task_id} disappeared during execution (likely race condition).")
+        except FileNotFoundError:
+            print(f"[WARN] Task file {task_id} moved/deleted during execution.")
+            # It's okay, maybe another thread moved it, or it was deleted.
+            # We still return the action result if the execution succeeded.
+        
         return {'success': action_result.get('success', False), 'message': action_result.get('message', 'Task executed'), 'details': action_result.get('details', {})}
-
+        
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
         print(f"[ERROR] Approve failed: {error_trace}")
         return {'success': False, 'error': f'Approval failed: {str(e)}', 'details': {'traceback': error_trace}}
+    
+    finally:
+        # Always release the lock
+        with processing_lock:
+            processing_tasks.discard(task_id)
 
 
 def execute_approved_task(task_type, content, filename):
