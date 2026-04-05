@@ -29,9 +29,6 @@ PROCESSES_TO_MONITOR = [
     {'name': 'whatsapp_watcher.py', 'cmd': ['python', 'src/whatsapp_watcher.py']},
     {'name': 'file_watcher.py', 'cmd': ['python', 'src/file_watcher.py']},
     {'name': 'orchestrator.py', 'cmd': ['python', 'src/orchestrator.py']},
-    {'name': 'facebook_watcher.py', 'cmd': ['python', 'src/facebook_watcher.py']},
-    {'name': 'instagram_watcher.py', 'cmd': ['python', 'src/instagram_watcher.py']},
-    {'name': 'x_watcher.py', 'cmd': ['python', 'src/x_watcher.py']},
 ]
 CHECK_INTERVAL = 30  # seconds
 RESTART_DELAY = 5  # seconds before restart

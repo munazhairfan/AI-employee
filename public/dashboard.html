@@ -999,16 +999,6 @@
                 <button class="btn btn-ghost btn-sm watcher-toggle" id="whatsapp-btn" onclick="toggleWatcher('whatsapp')">Start</button>
             </div>
 
-            <div class="watcher-card">
-                <div class="watcher-head">
-                    <div class="watcher-name">
-                        <span class="watcher-icon">📁</span> Filesystem
-                    </div>
-                    <div class="watcher-indicator" id="filesystem-dot"></div>
-                </div>
-                <div class="watcher-status" id="filesystem-status">Stopped</div>
-                <button class="btn btn-ghost btn-sm watcher-toggle" id="filesystem-btn" onclick="toggleWatcher('filesystem')">Start</button>
-            </div>
         </div>
     </section>
 
@@ -1057,9 +1047,6 @@
                     <div style="display:flex; gap:10px; flex-wrap:wrap;">
                         <button class="btn btn-primary" id="analyze-btn" onclick="createTask()">
                             ▸ Analyze & Create Task
-                        </button>
-                        <button class="btn btn-ghost" onclick="processDropFolder()">
-                            ⬆ Process Drop Folder
                         </button>
                     </div>
                     <div class="result-box" id="analysis-result"></div>
@@ -1276,7 +1263,7 @@ async function loadWatcherStatus() {
         const status = await res.json();
         watcherStates = status;
         
-        ['gmail','whatsapp','filesystem'].forEach(name => {
+        ['gmail','whatsapp'].forEach(name => {
             const running = status[name] === 'running';
             const dot = document.getElementById(name + '-dot');
             const stat = document.getElementById(name + '-status');
@@ -1410,14 +1397,6 @@ async function toggleWatcher(name) {
         setTimeout(loadWatcherStatus, 1000);
         setTimeout(loadStatus, 1500);
     } catch(e) { toast('Connection error', 'error'); }
-}
-
-async function processDropFolder() {
-    toast('Processing drop folder...', 'info');
-    const res = await fetch(`${API}/api/process-drop-folder`, { method: 'POST' });
-    const r = await res.json();
-    toast(r.success ? 'Drop folder processed' : (r.error || 'Failed'), r.success ? 'success' : 'error');
-    if (r.success) { loadStatus(); loadPendingTasks(); }
 }
 
 function fillExample(text) {

@@ -1,7 +1,7 @@
 """
 Intent Analyzer - AI-Powered Intent Detection
 Reads dropped TXT files and determines:
-1. What action is needed (invoice, email, whatsapp, facebook, odoo)
+1. What action is needed (invoice, email, whatsapp, linkedin, odoo)
 2. What entities are present (customer, amount, dates, etc.)
 3. What information is missing
 4. Creates structured task file automatically
@@ -35,8 +35,6 @@ INTENT_TYPES = {
     'email_send': 'Send email',
     'email_reply': 'Reply to email',
     'email_invoice': 'Create invoice from email request',
-    'facebook_post': 'Create Facebook post',
-    'facebook_reply': 'Reply to Facebook message',
     'linkedin_post': 'Create LinkedIn post',
     'linkedin_reply': 'Reply to LinkedIn message',
     'odoo_invoice': 'Create invoice in Odoo',
@@ -89,8 +87,6 @@ TASK:
    - email_invoice (create invoice from email) - ✅ CAN AUTO
    - linkedin_post (create LinkedIn post) - ✅ CAN AUTO
    - linkedin_reply (reply to LinkedIn message) - ❌ CANNOT AUTO (needs manual)
-   - facebook_post (create Facebook post) - ❌ CANNOT AUTO (needs manual)
-   - facebook_reply (reply to Facebook message) - ❌ CANNOT AUTO (needs manual)
    - odoo_invoice (create invoice in Odoo) - ✅ CAN AUTO
    - odoo_customer (create customer in Odoo) - ✅ CAN AUTO
    - bank_payment (record bank payment) - ❌ CANNOT AUTO (needs manual)
@@ -109,8 +105,6 @@ TASK:
 
 **INFORMATIONAL TASKS (can_auto_execute: false):**
 - linkedin_reply - We DON'T have LinkedIn reply automation ❌
-- facebook_post - We DON'T have Facebook automation ❌
-- facebook_reply - We DON'T have Facebook automation ❌
 - bank_payment - We DON'T have bank automation ❌
 - job_alert - Just information, no action needed ❌
 - newsletter - Just information, no action needed ❌
@@ -130,7 +124,7 @@ TASK:
    - order_number: Order # if mentioned
    - product_service: What product/service
    - message_content: The actual message/reply to send (for whatsapp_reply, email_send)
-   - post_content: The LinkedIn/Facebook post text (for linkedin_post, facebook_post)
+   - post_content: The LinkedIn post text (for linkedin_post)
 
 IMPORTANT RULES:
 - invoice_number is OPTIONAL - if not mentioned by customer, do NOT mark as missing (Odoo will auto-generate)
@@ -277,18 +271,10 @@ NOW ANALYZE THIS:
     
     # Call AI
     result = ai_reasoning(prompt, task_type="general")
-    
+
     if result is None:
-        return {
-            'primary_intent': 'general_task',
-            'entities': {},
-            'missing_info': ['all'],
-            'confidence': 0,
-            'suggested_action': 'AI failed to analyze - human review needed',
-            'priority': 'high',
-            'error': 'AI analysis failed'
-        }
-    
+        return None  # Let the processor handle the failure (retry logic)
+
     return result
 
 

@@ -168,7 +168,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 if not intent_data or not intent_data.get('primary_intent'):
                     self.send_json_response({
                         'success': False,
-                        'error': 'AI failed to analyze. Please try again with more details.',
+                        'error': 'AI analysis failed due to rate limits or missing details. Please try again in a moment or provide more information.',
                         'retry_after': 30
                     })
                     return
@@ -237,11 +237,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             stop_watchers()
             self.send_json_response({'success': True, 'message': 'Watchers stopped'})
         
-        elif parsed.path == '/api/process-drop-folder':
-            # Process drop folder now
-            result = process_drop_folder_now()
-            self.send_json_response(result)
-
         elif parsed.path == '/api/upload-drop':
             # Handle direct file drop & auto-process
             try:
@@ -274,16 +269,6 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         elif parsed.path == '/api/watchers/gmail/stop':
             # Stop Gmail watcher
             result = stop_gmail_watcher()
-            self.send_json_response(result)
-
-        elif parsed.path == '/api/watchers/filesystem/start':
-            # Start Filesystem watcher
-            result = start_filesystem_watcher()
-            self.send_json_response(result)
-
-        elif parsed.path == '/api/watchers/filesystem/stop':
-            # Stop Filesystem watcher
-            result = stop_filesystem_watcher()
             self.send_json_response(result)
 
         elif parsed.path == '/api/watchers/whatsapp/start':
@@ -988,58 +973,6 @@ def stop_gmail_watcher():
         return {'success': False, 'error': 'Gmail watcher not running'}
 
 
-def start_filesystem_watcher():
-    """Start Filesystem watcher in background"""
-    global watchers
-    
-    # Check if already running
-    if 'filesystem' in watchers and watchers['filesystem'].poll() is None:
-        return {'success': False, 'error': 'Filesystem watcher already running'}
-
-    try:
-        # Start Filesystem Watcher
-        watcher_path = Path('watchers') / 'filesystem_watcher.py'
-        watcher_cmd = ['python', str(watcher_path)]
-
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startupinfo.wShowWindow = subprocess.SW_HIDE
-
-        watcher_process = subprocess.Popen(
-            watcher_cmd,
-            startupinfo=startupinfo,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-        )
-        watchers['filesystem'] = watcher_process
-
-        # Wait 3 seconds to check if it started
-        import time
-        time.sleep(3)
-
-        if watcher_process.poll() is None:
-            return {'success': True, 'message': 'Filesystem watcher started'}
-        else:
-            return {'success': False, 'error': 'Filesystem watcher failed to start'}
-
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-
-def stop_filesystem_watcher():
-    """Stop Filesystem watcher"""
-    global watchers
-    
-    if 'filesystem' in watchers:
-        try:
-            watchers['filesystem'].terminate()
-        except:
-            pass
-        del watchers['filesystem']
-        return {'success': True, 'message': 'Filesystem watcher stopped'}
-    else:
-        return {'success': False, 'error': 'Filesystem watcher not running'}
-
-
 def start_whatsapp_watcher():
     """Start WhatsApp watcher in background"""
     global watchers
@@ -1634,26 +1567,6 @@ def create_dashboard_html():
             } catch (err) {
                 // Ignore errors after rejection (task already moved)
                 console.log('Task already processed');
-            }
-        }
-        
-        async function processDropFolder() {
-            try {
-                const res = await fetch(`${API}/api/process-drop-folder`, {
-                    method: 'POST'
-                });
-                
-                const result = await res.json();
-                
-                if (result.success) {
-                    alert('Drop folder processed! Check Needs_Action folder.');
-                    loadPendingTasks();
-                    loadStatus();
-                } else {
-                    alert('Error: ' + (result.error || 'Unknown error'));
-                }
-            } catch (err) {
-                alert('Error: ' + err.message);
             }
         }
     </script>

@@ -25,7 +25,7 @@ PROCESSED_LOG = Path('data/watcher_processed_log.json')
 MAX_FILES_PER_BATCH = 1       # Only 1 file at a time
 BATCH_DELAY = 300             # Wait 5 minutes (300 seconds)
 MAIN_LOOP_INTERVAL = 300      # Check every 5 minutes
-INITIAL_DELAY = 120           # Wait 2 minutes at startup (let user actions go first)
+INITIAL_DELAY = 120           # Wait 2 minutes at startup (let user actions go first)      # was 120
 
 # Create folders
 WATCHER_OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -120,7 +120,7 @@ def create_task_from_file(watcher_file):
 
     if source == 'whatsapp_watcher' and from_chat:
         # Add WhatsApp-specific context to help AI extract phone number and format correctly
-        ai_input_text = f"""This is a WhatsApp message that needs to be processed.
+        ai_input_text = f"""This is a WhatsApp message received from {from_chat}.
 
 **Source:** WhatsApp
 **From:** {from_chat}
@@ -132,7 +132,7 @@ def create_task_from_file(watcher_file):
 **INSTRUCTIONS FOR AI:**
 1. Analyze the message content to determine the correct intent (odoo_invoice, whatsapp_reply, email_send, etc.)
 2. Extract the phone number from the metadata if available (phone: {metadata.get('phone', 'NOT_EXTRACTED')})
-3. If phone is 'NOT_EXTRACTED' or 'Not available', mark it as missing info for human to fill
+3. If phone is 'NOT_EXTRACTED' or 'Not available', check if the name of the contact is mentioned, if one of both cases aren't fulfilled then mark it as missing info
 4. The message_content entity should contain the suggested reply message
 5. Format the suggested_action with an arrow: → Send '[message]' to [phone] on WhatsApp
 6. Include confidence score and all extracted entities (phone, message content)"""
@@ -171,16 +171,9 @@ def create_task_from_file(watcher_file):
                 break
 
     if not ai_result or not ai_result.get('primary_intent'):
-        print(f"[AI] Analysis failed after {max_retries} retries!")
-        # Create informational task instead of failing
-        ai_result = {
-            'primary_intent': 'general_task',
-            'category': 'informational',
-            'can_auto_execute': False,
-            'confidence': 0,
-            'one_line_summary': 'AI analysis failed - manual review needed',
-            'expires_in_days': 7
-        }
+        print(f"[AI] ✗ Analysis failed — rate limit or API error. Will retry next cycle.")
+        print(f"[AI] File left unprocessed: {watcher_file.name}")
+        return False  # Don't mark as processed, don't create any task
     
     print(f"[AI] Intent: {ai_result.get('primary_intent')}")
     print(f"[AI] Category: {ai_result.get('category', 'unknown')}")

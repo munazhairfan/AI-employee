@@ -569,15 +569,6 @@ def generate_draft_for_action(action_type: str, content: str, metadata: dict,
     elif action_type == 'linkedin' or action_type == 'linkedin_post':
         body_section = f"\n## Post Text\n\n{content[:500]}\n"
 
-    elif action_type == 'facebook' or action_type == 'facebook_post':
-        body_section = f"\n## Post Text\n\n{content[:500]}\n"
-
-    elif action_type == 'x' or action_type == 'twitter':
-        body_section = f"\n## Post Text\n\n{content[:500]}\n"
-
-    elif action_type == 'instagram' or action_type == 'instagram_post':
-        body_section = f"\n## Post Text\n\n{content[:500]}\n"
-
     elif action_type == 'invoice':
         client_line = f"**Client:** {metadata.get('partner_name', 'N/A')}"
         amount_line = f"**Amount:** PKR {metadata.get('amount', '0')}"
@@ -810,60 +801,6 @@ def poll_pending_approvals(pending_dir: Path, done_dir: Path, rejected_dir: Path
                     else:
                         logger.error(f"LinkedIn MCP error: {response.status_code}")
 
-                elif action_type in ['facebook', 'facebook_draft', 'facebook_post'] and post_text:
-                    # Call Social MCP - Facebook
-                    logger.info(f"Posting to Facebook via MCP...")
-                    response = requests.post(
-                        'http://localhost:3005/post_facebook',
-                        json={'content': post_text},
-                        timeout=30
-                    )
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get('success'):
-                            logger.info(f"Facebook posted: {result.get('post_url')}")
-                            execution_success = True
-                        else:
-                            logger.error(f"Facebook post failed: {result.get('error')}")
-                    else:
-                        logger.error(f"Facebook MCP error: {response.status_code}")
-
-                elif 'x' in action_type.lower() and post_text:
-                    # Call Social MCP - X (Twitter)
-                    logger.info(f"Posting to X (Twitter) via MCP...")
-                    response = requests.post(
-                        'http://localhost:3005/post_x',
-                        json={'content': post_text},
-                        timeout=30
-                    )
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get('success'):
-                            logger.info(f"X/Twitter posted: {result.get('post_url')}")
-                            execution_success = True
-                        else:
-                            logger.error(f"X post failed: {result.get('error')}")
-                    else:
-                        logger.error(f"X MCP error: {response.status_code}")
-
-                elif 'instagram' in action_type.lower() and post_text:
-                    # Call Social MCP - Instagram
-                    logger.info(f"Posting to Instagram via MCP...")
-                    response = requests.post(
-                        'http://localhost:3005/post_instagram',
-                        json={'content': post_text},
-                        timeout=30
-                    )
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get('success'):
-                            logger.info(f"Instagram posted: {result.get('media_id')}")
-                            execution_success = True
-                        else:
-                            logger.error(f"Instagram post failed: {result.get('error')}")
-                    else:
-                        logger.error(f"Instagram MCP error: {response.status_code}")
-
                 elif 'whatsapp' in action_type.lower() and whatsapp_to and whatsapp_message:
                     # Call WhatsApp MCP
                     logger.info(f"Sending WhatsApp to {whatsapp_to} via MCP...")
@@ -1081,16 +1018,7 @@ def check_requires_draft(content: str, metadata: dict, file_type: str) -> tuple:
     # Check for social keywords - return specific platform
     if any(kw in content.lower() for kw in ['linkedin', 'linked in']):
         return True, 'linkedin', True  # Draft + auto-execute after approval
-    
-    if any(kw in content.lower() for kw in ['facebook', 'fb post']):
-        return True, 'facebook', True
-    
-    if any(kw in content.lower() for kw in ['twitter', 'tweet', 'x post']):
-        return True, 'x', True
-    
-    if any(kw in content.lower() for kw in ['instagram', 'ig post']):
-        return True, 'instagram', True
-    
+
     # Generic "post" keyword defaults to LinkedIn
     if 'post' in content.lower():
         return True, 'linkedin', True
