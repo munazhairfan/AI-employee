@@ -90,7 +90,7 @@ class WhatsAppWatcher(BaseWatcher):
                 # Launch browser with persistent session
                 browser = p.chromium.launch_persistent_context(
                     user_data_dir=str(self.session_path),
-                    headless=False,
+                    headless=True,
                     args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'],
                     timeout=60000
                 )
@@ -330,7 +330,7 @@ subject: WhatsApp message from {item['chat']}
                 # Launch browser ONCE and keep it open
                 browser = p.chromium.launch_persistent_context(
                     user_data_dir=str(self.session_path),
-                    headless=False,
+                    headless=True,
                     args=['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage'],
                     timeout=120000  # 2 minutes timeout for initial load
                 )
@@ -391,21 +391,21 @@ subject: WhatsApp message from {item['chat']}
                 check_count = 0
                 while True:
                     try:
+                        # 1. PROCESS OUTGOING QUEUE FIRST (Priority)
+                        self.process_outgoing_queue(page)
+
+                        # 2. WATCH FOR NEW MESSAGES
                         check_count += 1
-                        self.logger.info(f"\nChecking for messages... (check #{check_count})")
+                        self.logger.info(f"\nChecking for incoming messages... (check #{check_count})")
 
-                        time.sleep(2)  # Small wait for any updates to render
-
-                        # Try to get fresh chat rows from current page
+                        time.sleep(2)
                         try:
                             fresh_chat_rows = page.query_selector_all('div[role="row"]')
                             if fresh_chat_rows and len(fresh_chat_rows) > 0:
                                 chat_rows = fresh_chat_rows
-                                self.logger.debug(f"Updated chat rows: {len(chat_rows)}")
-                        except Exception as nav_err:
-                            self.logger.debug(f"Could not refresh chat rows: {nav_err}")
+                        except:
+                            pass
 
-                        # Get unread messages
                         items = self._check_messages_in_page(page, chat_rows)
 
                         if items:
@@ -416,7 +416,6 @@ subject: WhatsApp message from {item['chat']}
                             self.logger.info("No unread messages")
 
                         # Wait before next check
-                        self.logger.info(f"Waiting {self.check_interval} seconds...")
                         time.sleep(self.check_interval)
 
                     except KeyboardInterrupt:
@@ -430,6 +429,98 @@ subject: WhatsApp message from {item['chat']}
 
         except Exception as e:
             self.logger.error(f"Error in WhatsApp watcher: {e}")
+
+    def process_outgoing_queue(self, page):
+        """Process messages waiting in the outbound queue folder"""
+        queue_dir = Path('data/whatsapp_outbound')
+        if not queue_dir.exists():
+            return
+
+        outbound_files = list(queue_dir.glob('*.json'))
+        if not outbound_files:
+            return
+
+        self.logger.info(f"Found {len(outbound_files)} messages in outbound queue")
+
+        for task_file in outbound_files:
+            try:
+                task = json.loads(task_file.read_text(encoding='utf-8'))
+                if task.get('status') != 'pending':
+                    continue
+
+                self.logger.info(f"Processing outbound message: {task['id']}")
+                
+                # Use sync logic for send
+                success, error = self._send_message_internal(page, task)
+                
+                if success:
+                    task['status'] = 'sent'
+                    task['sent_at'] = datetime.now().isoformat()
+                    task_file.write_text(json.dumps(task, indent=2), encoding='utf-8')
+                    # Move to processed folder
+                    processed_dir = Path('data/whatsapp_outbound/processed')
+                    processed_dir.mkdir(parents=True, exist_ok=True)
+                    task_file.rename(processed_dir / task_file.name)
+                else:
+                    task['status'] = 'failed'
+                    task['error'] = error
+                    task_file.write_text(json.dumps(task, indent=2), encoding='utf-8')
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing queue file {task_file}: {e}")
+
+    def _send_message_internal(self, page, task):
+        """Low-level send logic using the existing page"""
+        try:
+            target = task.get('contact_name') or task.get('phone')
+            message = task.get('message')
+
+            self.logger.info(f"Sending message to {target}...")
+
+            # 1. Search for contact
+            search = page.query_selector('div[role="search"] input')
+            if not search:
+                search = page.query_selector('#side input[placeholder*="Search"]')
+            
+            if not search:
+                return False, "Search box not found"
+
+            # Clear search box first
+            search.click()
+            page.keyboard.press('Control+A')
+            page.keyboard.press('Backspace')
+            time.sleep(0.5)
+            
+            page.keyboard.type(str(target))
+            time.sleep(3)
+            page.keyboard.press('Enter')
+            time.sleep(3)
+
+            # 2. Find message box
+            msg_box = page.query_selector('footer div[contenteditable="true"]')
+            if not msg_box:
+                return False, f"Could not open chat with {target}"
+
+            # 3. Type and Send
+            msg_box.click()
+            time.sleep(0.5)
+            page.keyboard.type(str(message))
+            time.sleep(1)
+            
+            send_btn = page.query_selector('button[aria-label="Send"]')
+            if send_btn:
+                send_btn.click()
+            else:
+                page.keyboard.press('Enter')
+            
+            time.sleep(2)
+            self.logger.info(f"✓ Message sent to {target}")
+            return True, None
+
+        except Exception as e:
+            self.logger.error(f"Internal send error: {e}")
+            return False, str(e)
+
 
 
 if __name__ == "__main__":

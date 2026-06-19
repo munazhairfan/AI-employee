@@ -187,16 +187,10 @@ def log_ai_decision(draft_id: str, action_type: str, input_data: dict,
                     ai_output: dict, requires_review: bool, review_reason: str = "") -> None:
     """
     Log AI decision to audit trail with full details.
-    
-    This creates a separate AI audit log entry for tracking:
-    - What input was provided to AI
-    - What output AI generated
-    - Whether human review is required
-    - Confidence scores
+    Uses JSONL (line-based JSON) for high performance.
     """
     log_file = get_log_file()
     
-    # Create AI-specific log entry
     ai_log_entry = {
         'timestamp': datetime.now().isoformat(),
         'log_type': 'ai_decision',
@@ -214,24 +208,12 @@ def log_ai_decision(draft_id: str, action_type: str, input_data: dict,
         'ai_output_full': ai_output,
         'requires_human_review': requires_review,
         'review_reason': review_reason,
-        'human_action': None,  # Will be filled when human approves/rejects
-        'human_modified_data': None  # Will be filled if human changes AI output
+        'human_action': None,
+        'human_modified_data': None
     }
     
-    # Load existing logs
-    existing_logs = []
-    if log_file.exists():
-        try:
-            content = log_file.read_text(encoding='utf-8')
-            if content.strip():
-                existing_logs = json.loads(content)
-                if not isinstance(existing_logs, list):
-                    existing_logs = [existing_logs]
-        except (json.JSONDecodeError, IOError):
-            existing_logs = []
-    
-    existing_logs.append(ai_log_entry)
-    log_file.write_text(json.dumps(existing_logs, indent=2), encoding='utf-8')
+    with open(log_file, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(ai_log_entry) + '\n')
 
 
 def parse_frontmatter_with_validation(content: str) -> dict:
@@ -293,7 +275,7 @@ def get_log_file() -> Path:
 
 
 def log_action(action: str, result: str, error: str = None) -> None:
-    """Append action to JSON log file."""
+    """Append action to JSON log file using JSONL format."""
     log_file = get_log_file()
 
     log_entry = {
@@ -303,19 +285,8 @@ def log_action(action: str, result: str, error: str = None) -> None:
         'error': error
     }
 
-    existing_logs = []
-    if log_file.exists():
-        try:
-            content = log_file.read_text(encoding='utf-8')
-            if content.strip():
-                existing_logs = json.loads(content)
-                if not isinstance(existing_logs, list):
-                    existing_logs = [existing_logs]
-        except (json.JSONDecodeError, IOError):
-            existing_logs = []
-
-    existing_logs.append(log_entry)
-    log_file.write_text(json.dumps(existing_logs, indent=2), encoding='utf-8')
+    with open(log_file, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(log_entry) + '\n')
 
 
 def append_to_dashboard(dashboard: Path, entry: str) -> None:

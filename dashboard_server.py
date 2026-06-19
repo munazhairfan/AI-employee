@@ -73,6 +73,47 @@ system_state = {
 
 # Background processes
 watchers = {}
+processor_process = None
+
+def start_ai_processor():
+    """Start the AI processor background process"""
+    global processor_process
+    
+    # Check if already running
+    if processor_process is not None and processor_process.poll() is None:
+        return True
+        
+    print("[INFO] Starting AI Processor...")
+    processor_cmd = [sys.executable, 'src/watcher_processor.py']
+    
+    startupinfo = None
+    if sys.platform == 'win32':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+
+    try:
+        processor_process = subprocess.Popen(
+            processor_cmd,
+            startupinfo=startupinfo,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0
+        )
+        print(f"[INFO] ✓ AI Processor started (PID: {processor_process.pid})")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to start AI Processor: {e}")
+        return False
+
+def monitor_ai_processor():
+    """Background thread to monitor and restart AI processor every 60 seconds"""
+    while True:
+        try:
+            time.sleep(60)
+            if processor_process is None or processor_process.poll() is not None:
+                print("[WARN] AI Processor died or not running. Restarting...")
+                start_ai_processor()
+        except Exception as e:
+            print(f"[ERROR] AI Processor monitor error: {e}")
 
 # Processing lock to prevent double-clicking on approval
 processing_tasks = set()
@@ -587,7 +628,7 @@ def get_pending_item_content(task_id):
     return {'error': 'Not found'}
 
 def get_recent_activity():
-    """Get recent activity from logs"""
+    """Get recent activity from logs (supports JSONL format)"""
     activities = []
     
     # Get today's log
@@ -596,16 +637,20 @@ def get_recent_activity():
     
     if log_file.exists():
         try:
-            content = log_file.read_text(encoding='utf-8')
-            logs = json.loads(content)
-            
+            with open(log_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
             # Get last 20 entries
-            for entry in logs[-20:]:
-                activities.append({
-                    'time': entry.get('timestamp', '')[-8:],
-                    'action': entry.get('action', ''),
-                    'result': entry.get('result', '')[:100]
-                })
+            for line in lines[-20:]:
+                try:
+                    entry = json.loads(line.strip())
+                    activities.append({
+                        'time': entry.get('timestamp', '')[-8:],
+                        'action': entry.get('action', ''),
+                        'result': entry.get('result', '')[:100]
+                    })
+                except:
+                    continue
         except:
             pass
     
@@ -1585,18 +1630,11 @@ def run_server():
     if not DASHBOARD_PATH.exists():
         create_dashboard_html()
 
-    # Auto-start AI Processor (handles all task processing)
-    print("[INFO] Starting AI Processor...")
-    processor_cmd = [sys.executable, 'src/watcher_processor.py']
-    startupinfo = subprocess.STARTUPINFO()
-    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startupinfo.wShowWindow = subprocess.SW_HIDE
-    processor_process = subprocess.Popen(
-        processor_cmd,
-        startupinfo=startupinfo,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-    )
-    print("[INFO] ✓ AI Processor started (runs in background)")
+    # Start AI Processor monitor
+    start_ai_processor()
+    monitor_thread = threading.Thread(target=monitor_ai_processor, daemon=True)
+    monitor_thread.start()
+    print("[INFO] ✓ AI Processor monitoring active (checks every 60s)")
     print()
 
     # Start server
@@ -1612,7 +1650,7 @@ def run_server():
         print(f"  Drop Folder: {DROP_FOLDER.absolute()}")
         print()
         print("  Features:")
-        print("  - AI Processor running automatically")
+        print("  - AI Processor managed & monitored")
         print("  - Drop TXT files for AI analysis")
         print("  - Type messages directly")
         print("  - Start/Stop watchers from dashboard")
@@ -1627,8 +1665,9 @@ def run_server():
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\n[INFO] Stopping server...")
-            print("[INFO] Stopping AI Processor...")
-            processor_process.terminate()
+            if processor_process:
+                print("[INFO] Stopping AI Processor...")
+                processor_process.terminate()
             print("[INFO] Server stopped")
 
 
